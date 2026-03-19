@@ -1,0 +1,275 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Anamnesis {
+  id                        Int                        @id @default(autoincrement())
+  clientId                  Int                        @map("client_id")
+  trainerId                 Int                        @map("trainer_id")
+  fullName                  String                     @map("full_name")
+  age                       Int
+  gender                    gender_enum
+  weightKg                  Decimal                    @map("weight_kg") @db.Decimal(5, 2)
+  heightCm                  Decimal                    @map("height_cm") @db.Decimal(5, 2)
+  occupation                occupation_type_enum
+  occupationOther           String?                    @map("occupation_other")
+  medicalConditions         medical_condition_enum[]   @map("medical_conditions")
+  medicalConditionOther     String?                    @map("medical_condition_other")
+  spineJointInjuries        Boolean                    @default(false) @map("spine_joint_injuries")
+  injuryDescription         String?                    @map("injury_description")
+  regularMedication         Boolean                    @default(false) @map("regular_medication")
+  medicationDescription     String?                    @map("medication_description")
+  allergies                 Boolean                    @default(false)
+  allergyDescription        String?                    @map("allergy_description")
+  lastMedicalExam           DateTime?                  @map("last_medical_exam") @db.Date
+  activityLevel             activity_level_enum        @map("activity_level")
+  trainingExperience        training_experience_enum   @map("training_experience")
+  exerciseTypes             exercise_type_enum[]       @map("exercise_types")
+  exerciseOther             String?                    @map("exercise_other")
+  goals                     goal_enum[]
+  goalOther                 String?                    @map("goal_other")
+  specificGoal              String?                    @map("specific_goal")
+  trainingAvailability      training_availability_enum @map("training_availability")
+  nutritionType             nutrition_type_enum        @map("nutrition_type")
+  nutritionOther            String?                    @map("nutrition_other")
+  eatsProcessedFood         processed_food_enum        @map("eats_processed_food")
+  sleepHours                Int                        @map("sleep_hours")
+  stressLevel               stress_level_enum          @map("stress_level")
+  stressComments            String?                    @map("stress_comments")
+  hadPersonalTrainer        Boolean                    @default(false) @map("had_personal_trainer")
+  personalTrainerExperience String?                    @map("personal_trainer_experience")
+  wantsProgressTracking     Boolean                    @default(false) @map("wants_progress_tracking")
+  createdAt                 DateTime                   @default(now()) @map("created_at") @db.Timestamp(6)
+  client                    User                       @relation("ClientAnamnesis", fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  trainer                   User                       @relation("TrainerAnamnesis", fields: [trainerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  schedules                 Schedule[]
+
+  @@map("anamnesis")
+}
+
+model Exercise {
+  id               Int               @id @default(autoincrement())
+  name             String            @unique @db.VarChar(255)
+  sets             Int
+  repetitions      Int
+  duration         Int
+  restSeconds      Int               @map("rest_seconds")
+  demonstrationUrl String?           @map("demonstration_url")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamp(6)
+  instructions String? @db.Text  
+  tips String[]
+  workoutExercises WorkoutExercise[]
+
+  @@map("exercise")
+}
+
+model Schedule {
+  id          Int           @id @default(autoincrement())
+  anamnesisId Int           @map("anamnesis_id")
+  weekDay     week_day_enum @map("week_day")
+  startHour   DateTime      @map("start_hour") @db.Time(6)
+  endHour     DateTime      @map("end_hour") @db.Time(6)
+  anamnesis   Anamnesis     @relation(fields: [anamnesisId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("schedule")
+}
+
+model User {
+  id                  Int               @id @default(autoincrement())
+  registrationCode    String            @unique @map("registration_code")
+  registrationStatus  Boolean           @default(false) @map("registration_status")
+  name                String            @db.VarChar(255)
+  email               String            @unique @db.VarChar(255)
+  passwordHash        String            @unique @map("password_hash")
+  phone               BigInt?           @unique
+  dateOfBirth         DateTime?         @map("date_of_birth") @db.Date
+  userType            user_type_enum    @map("user_type")
+  parentUserId        Int               @map("parent_user_id")
+  isDeleted           Boolean           @default(false)
+  emergency_name      String?           @db.VarChar(100)
+  emergency_phone     String?           @db.VarChar(20)
+  profile_image       String?           @db.VarChar(500)
+  created_at          DateTime          @default(now())
+  clientAnamnesis     Anamnesis[]       @relation("ClientAnamnesis")
+  trainerAnamnesis    Anamnesis[]       @relation("TrainerAnamnesis")
+  parentUser          User              @relation("UserToParentUser", fields: [parentUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  childUsers          User[]            @relation("UserToParentUser")
+  createdWorkouts     Workout[]         @relation("TrainerWorkouts")
+  assignedWorkouts    WorkoutClient[]   @relation("ClientToWorkout")
+
+  @@map("users")
+}
+
+model Workout {
+  id                Int               @id @default(autoincrement())
+  trainerId         Int               @map("trainer_id")
+  name              String            @db.VarChar(255)
+  description       String?
+  exerciseSignature String?           @unique @map("exercise_signature")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime          @default(now()) @map("updated_at") @db.Timestamp(6)
+  trainer           User              @relation("TrainerWorkouts", fields: [trainerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workoutClients    WorkoutClient[]   @relation("WorkoutToClient")
+  workoutExercises  WorkoutExercise[]
+
+  @@map("workout")
+}
+
+model WorkoutClient {
+  workoutId Int                 @map("workout_id")
+  clientId  Int                 @map("client_id")
+  date      DateTime            @db.Date
+  startTime DateTime?           @map("start_time") @db.Timestamp(6)
+  endTime   DateTime?           @map("end_time") @db.Timestamp(6)
+  status    workout_status_enum @default(WORKOUT_STATUS_0)
+  
+  client    User                @relation("ClientToWorkout", fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workout   Workout             @relation("WorkoutToClient", fields: [workoutId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  
+  feedback  WorkoutFeedback?
+
+  @@id([workoutId, clientId, date])
+  @@map("workout_clients")
+}
+
+model WorkoutFeedback {
+  id                 Int           @id @default(autoincrement())
+  workoutId          Int           @map("workout_id")
+  clientId           Int           @map("client_id")
+  date               DateTime      @db.Date
+  
+  difficulty         String        @db.VarChar(50)
+  fatigue            Int           @default(5)
+  executionNotes     String?       @map("execution_notes") @db.Text
+  adjustmentsRequest String?       @map("adjustments_request") @db.Text
+  
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+
+  workoutSession     WorkoutClient @relation(fields: [workoutId, clientId, date], references: [workoutId, clientId, date], onDelete: Cascade)
+
+  @@unique([workoutId, clientId, date])
+  @@map("workout_feedback")
+}
+
+model WorkoutExercise {
+  workoutId         Int      @map("workout_id")
+  exerciseId        Int      @map("exercise_id")
+  sequenceOrder     Int      @map("sequence_order")
+  customSets        Int?     @map("custom_sets")
+  customRepetitions Int?     @map("custom_repetitions")
+  customRestSeconds Int?     @map("custom_rest_seconds")
+  exercise          Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  workout           Workout  @relation(fields: [workoutId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([workoutId, sequenceOrder])
+  @@map("workout_exercises")
+}
+
+// --- ENUMS ---
+
+enum activity_level_enum {
+  ACTIVITY_LEVEL_0 @map("0")
+  ACTIVITY_LEVEL_1 @map("1")
+  ACTIVITY_LEVEL_2 @map("2")
+  ACTIVITY_LEVEL_3 @map("3")
+}
+
+enum exercise_type_enum {
+  EXERCISE_TYPE_0 @map("0")
+  EXERCISE_TYPE_1 @map("1")
+  EXERCISE_TYPE_2 @map("2")
+  EXERCISE_TYPE_3 @map("3")
+  EXERCISE_TYPE_4 @map("4")
+}
+
+enum gender_enum {
+  GENDER_0 @map("0")
+  GENDER_1 @map("1")
+  GENDER_2 @map("2")
+}
+
+enum goal_enum {
+  GOAL_0 @map("0")
+  GOAL_1 @map("1")
+  GOAL_2 @map("2")
+  GOAL_3 @map("3")
+  GOAL_4 @map("4")
+  GOAL_5 @map("5")
+  GOAL_6 @map("6")
+}
+
+enum medical_condition_enum {
+  MEDICAL_CONDITION_0 @map("0")
+  MEDICAL_CONDITION_1 @map("1")
+  MEDICAL_CONDITION_2 @map("2")
+  MEDICAL_CONDITION_3 @map("3")
+  MEDICAL_CONDITION_4 @map("4")
+  MEDICAL_CONDITION_5 @map("5")
+}
+
+enum nutrition_type_enum {
+  NUTRITION_TYPE_0 @map("0")
+  NUTRITION_TYPE_1 @map("1")
+  NUTRITION_TYPE_2 @map("2")
+  NUTRITION_TYPE_3 @map("3")
+}
+
+enum occupation_type_enum {
+  OCCUPATION_TYPE_0 @map("0")
+  OCCUPATION_TYPE_1 @map("1")
+  OCCUPATION_TYPE_2 @map("2")
+  OCCUPATION_TYPE_3 @map("3")
+}
+
+enum processed_food_enum {
+  PROCESSED_FOOD_0 @map("0")
+  PROCESSED_FOOD_1 @map("1")
+  PROCESSED_FOOD_2 @map("2")
+}
+
+enum stress_level_enum {
+  STRESS_LEVEL_0 @map("0")
+  STRESS_LEVEL_1 @map("1")
+  STRESS_LEVEL_2 @map("2")
+}
+
+enum training_availability_enum {
+  TRAINING_AVAILABILITY_0 @map("0")
+  TRAINING_AVAILABILITY_1 @map("1")
+  TRAINING_AVAILABILITY_2 @map("2")
+}
+
+enum training_experience_enum {
+  TRAINING_EXPERIENCE_0 @map("0")
+  TRAINING_EXPERIENCE_1 @map("1")
+  TRAINING_EXPERIENCE_2 @map("2")
+  TRAINING_EXPERIENCE_3 @map("3")
+}
+
+enum user_type_enum {
+  USER_TYPE_0 @map("0")
+  USER_TYPE_1 @map("1")
+  USER_TYPE_2 @map("2")
+  USER_TYPE_3 @map("3")
+}
+
+enum week_day_enum {
+  WEEK_DAY_0 @map("0")
+  WEEK_DAY_1 @map("1")
+  WEEK_DAY_2 @map("2")
+  WEEK_DAY_3 @map("3")
+  WEEK_DAY_4 @map("4")
+  WEEK_DAY_5 @map("5")
+  WEEK_DAY_6 @map("6")
+}
+
+enum workout_status_enum {
+  WORKOUT_STATUS_0 @map("0")
+  WORKOUT_STATUS_1 @map("1")
+  WORKOUT_STATUS_2 @map("2")
+}

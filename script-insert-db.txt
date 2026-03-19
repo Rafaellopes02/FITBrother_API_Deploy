@@ -1,0 +1,86 @@
+-- Test Users
+-- Password are first name with 123
+-- Codes are 8D9AC4, 06B9C3, 91AC5F, 14F0A0, 5A196D respectively
+INSERT INTO users (registration_code, registration_status, name, email, password_hash, phone, date_of_birth, user_type, parent_user_id)
+VALUES 
+('$2b$10$n95qhSOBUOtl2TvATIP2Q.YmEzcufN95Wly3mgnSoGeA0eg35vEEm', TRUE, 'Daniel Araújo', 'daniel@gmail.pt', '$2b$10$//lkny6xkR2iBNfScnBX5esyqN0rb5QxbJFI./m2iK2nGsT81/gDa', 111111111, '1980-01-01', '0', 1),
+('$2b$10$CPMKaoOU.5zYHjZLVnDGGOVOSanWds40jcQl0ffZ2vVEZyQ.kfIqq', TRUE, 'Marcelo Fernandes', 'marcelo@gmail.pt', '$2b$10$oE9UCMSnp9cAzJycSnL7c.UAztvCmFGvwTYwgERQKt99Cqx8fZ/1y', 222222222, '1990-01-01', '1', 1),
+('$2b$10$rpB7PirArJP8CGE5rUUdDOQSmUBXaTUOpBRexWgeumpKqpHsjRdMG', TRUE, 'Jorge Ribeiro', 'jorge@gmail.pt', '$2b$10$iyUB.pWz35kYds56g/ACTedOis4tz9wYJuN/7WGcqCuOtVo3zvNG2', 333333333, '1992-02-02', '2', 1),
+('$2b$10$LoV25VS9HOj908ih2zIav.Ws6H06GrhasZCbYdpxAVZrxnH2ugiGi', FALSE, 'João Cunha', 'joao@gmail.pt', '$2b$10$k4v.Q9Js1dYnIg073YuHKu5uDg/XZoAxgNRtKUmOkvlj7Ohwuw4L.', 444444444, '1995-03-03', '3', 2),
+('$2b$10$npWKKii.oOy0TpB4tC0FG.x5BuklVT5r/8TYJxtdxIUC4FGRR5mae', FALSE, 'Miguel Oliveira', 'miguel@gmail.pt', '$2b$10$jdf1lps9TohbhjrMxw4SEuc5CECx0aP6GuCnwAnUkYgmBvAesjyCu', 555555555, '1996-04-04', '3', 2);
+
+-- Anamnesis for Client 1
+INSERT INTO anamnesis (
+    client_id, trainer_id, full_name, age, gender, weight_kg, height_cm, occupation, occupation_other,
+    medical_conditions, medical_condition_other, spine_joint_injuries, injury_description,
+    regular_medication, medication_description, allergies, allergy_description, last_medical_exam,
+    activity_level, training_experience, exercise_types, exercise_other,
+    goals, goal_other, specific_goal, training_availability,
+    nutrition_type, nutrition_other, eats_processed_food, sleep_hours, stress_level, stress_comments,
+    had_personal_trainer, personal_trainer_experience, wants_progress_tracking
+) VALUES (
+    4, 2, 'João Carlos Cunha', 29, '0', 75.5, 180.0, '1', NULL,
+    ARRAY['0','4']::medical_condition_enum[], NULL, TRUE, 'Dor em um joelho',
+    FALSE, NULL, FALSE, NULL, '2023-10-01',
+    '1', '1', ARRAY['0','1']::exercise_type_enum[], NULL,
+    ARRAY['0','1']::goal_enum[], NULL, 'Perder 5kg em 3 meses', '1',
+    '0', NULL, '2', 7, '1', 'Stress médio no trabalho',
+    FALSE, NULL, TRUE
+);
+
+-- Anamnesis for Client 2
+INSERT INTO anamnesis (
+    client_id, trainer_id, full_name, age, gender, weight_kg, height_cm, occupation, occupation_other,
+    medical_conditions, medical_condition_other, spine_joint_injuries, injury_description,
+    regular_medication, medication_description, allergies, allergy_description, last_medical_exam,
+    activity_level, training_experience, exercise_types, exercise_other,
+    goals, goal_other, specific_goal, training_availability,
+    nutrition_type, nutrition_other, eats_processed_food, sleep_hours, stress_level, stress_comments,
+    had_personal_trainer, personal_trainer_experience, wants_progress_tracking
+) VALUES (
+    5, 2, 'Miguel Araújo Oliveira', 28, '1', 62.0, 165.0, '2', 'Atleta',
+    ARRAY['4']::medical_condition_enum[], NULL, FALSE, NULL,
+    FALSE, NULL, TRUE, 'Amendoins', '2024-01-10',
+    '2', '2', ARRAY['2','3']::exercise_type_enum[], 'Dança',
+    ARRAY['2','4']::goal_enum[], NULL, 'Melhor flexibilidade e força núcleo', '2',
+    '2', NULL, '0', 8, '0', 'Estou em alta!',
+    TRUE, 'Trabalhei com um PT por 6 meses', TRUE
+);
+
+-- Schedule for Anamnesis (Client 1)
+INSERT INTO schedule (anamnesis_id, week_day, start_hour, end_hour)
+VALUES 
+(1, '0', '07:00', '08:00'),
+(1, '2', '18:00', '19:00');
+
+-- Schedule for Anamnesis (Client 2)
+INSERT INTO schedule (anamnesis_id, week_day, start_hour, end_hour)
+VALUES 
+(2, '1', '06:30', '07:30'),
+(2, '4', '17:00', '18:00');
+
+-- Exercises
+INSERT INTO exercise (name, sets, repetitions, duration, rest_seconds, demonstration_url)
+VALUES 
+('Flexões', 3, 12, 0, 60, 'https://example.com/pushup'),
+('Agachamentos', 4, 15, 0, 90, 'https://example.com/squat'),
+('Prancha', 3, 0, 30, 60, 'https://example.com/plank');
+
+
+-- Workout created by Trainer
+INSERT INTO workout (trainer_id, name, description, exercise_signature)
+VALUES 
+(2, 'Treino Corpo Todo', 'Um treino de corpo todo para condição geral.', NULL);
+
+-- Assign workout to both clients
+INSERT INTO workout_clients (workout_id, client_id, date, start_time, end_time, status)
+VALUES 
+(1, 4, '2025-07-08', NULL, NULL, '0'),
+(1, 5, '2025-07-09', NULL, NULL, '0');
+
+-- Assign 3 exercises to the workout
+INSERT INTO workout_exercises (workout_id, exercise_id, sequence_order, custom_sets, custom_repetitions, custom_rest_seconds)
+VALUES 
+(1, 1, 1, 4, 10, 60),  -- Push Up with custom sets/reps
+(1, 2, 2, NULL, NULL, NULL), -- Squat with default values
+(1, 3, 3, 3, NULL, 45); -- Plank with custom sets and rest

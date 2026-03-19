@@ -1,0 +1,217 @@
+-- User Type (0 = Administrator, 1 = Personal Trainer, 2 = Nutritionist, 3 = Client)
+CREATE TYPE user_type_enum AS ENUM ('0', '1', '2', '3');
+
+-- Gender (0 = Male, 1 = Female, 2 = Other / Prefer not to say)
+CREATE TYPE gender_enum AS ENUM ('0', '1', '2');
+
+-- Occupation Type (0 = Sedentary, 1 = Moderate, 2 = Intense, 3 = Other)
+CREATE TYPE occupation_type_enum AS ENUM ('0', '1', '2', '3');
+
+-- Medical Conditions (0 = Hypertension, 1 = Diabetes, 2 = Heart Problems, 3 = Respiratory Problems, 4 = None, 5 = Other)
+CREATE TYPE medical_condition_enum AS ENUM ('0', '1', '2', '3', '4', '5');
+
+-- Activity Level
+CREATE TYPE activity_level_enum AS ENUM ('0', '1', '2', '3');
+-- 0: Sedentary, 1: Moderately active, 2: Active, 3: Very active
+
+-- Training Experience
+CREATE TYPE training_experience_enum AS ENUM ('0', '1', '2', '3');
+-- 0: Never trained, 1: Occasional, 2: Regular, 3: Athlete
+
+-- Exercise Types (0 = Weight Training, 1 = Cardio, 2= Functional Training, 3 = Yoga/Pilates, 4 = Other)
+CREATE TYPE exercise_type_enum AS ENUM ('0', '1', '2', '3', '4');
+
+-- Training Goals (0 = Weight Loss, 1 = Muscle Gain, 2 = Toning, 3 = Improved Physical Conditioning, 4 = Increased Flexibility, 5 = Rehabilitation, 6 = Other)
+CREATE TYPE goal_enum AS ENUM ('0', '1', '2', '3', '4', '5', '6');
+
+-- Training Availability
+CREATE TYPE training_availability_enum AS ENUM ('0', '1', '2');
+-- 0: 1-2x, 1: 3-4x, 2: 5+ days
+
+-- Nutrition Type (0 = Balanced, 1 = Unbalanced, 2 = Vegetarian/Vegan, 3 = Other)
+CREATE TYPE nutrition_type_enum AS ENUM ('0', '1', '2', '3');
+
+-- Eats Processed Food
+CREATE TYPE processed_food_enum AS ENUM ('0', '1', '2');
+-- 0: Yes, 1: No, 2: Sometimes
+
+-- Stress Level
+CREATE TYPE stress_level_enum AS ENUM ('0', '1', '2');
+-- 0: Low, 1: Moderate, 2: High
+
+-- Week Days (for schedule)
+CREATE TYPE week_day_enum AS ENUM ('0', '1', '2', '3', '4', '5', '6');
+-- 0: Monday ... 6: Sunday
+
+-- Workout Status (0 = Scheduled, 1 = In Progress, 2 = Completed)
+CREATE TYPE workout_status_enum AS ENUM ('0', '1', '2');
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    registration_code TEXT NOT NULL UNIQUE,
+    registration_status BOOLEAN NOT NULL DEFAULT FALSE,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL UNIQUE,
+    phone BIGINT UNIQUE,
+	date_of_birth DATE,
+    user_type user_type_enum NOT NULL,
+    parent_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE anamnesis (
+    id SERIAL PRIMARY KEY,
+    client_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    trainer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+    -- Personal Information
+    full_name TEXT NOT NULL,
+    age INTEGER NOT NULL,
+    gender gender_enum NOT NULL,
+    weight_kg NUMERIC(5,2) NOT NULL,
+    height_cm NUMERIC(5,2) NOT NULL,
+    occupation occupation_type_enum NOT NULL,
+    occupation_other TEXT,
+
+    -- Health History
+    medical_conditions medical_condition_enum[] NOT NULL,
+    medical_condition_other TEXT,
+    spine_joint_injuries BOOLEAN NOT NULL DEFAULT FALSE,
+    injury_description TEXT,
+    regular_medication BOOLEAN NOT NULL DEFAULT FALSE,
+    medication_description TEXT,
+    allergies BOOLEAN NOT NULL DEFAULT FALSE,
+    allergy_description TEXT,
+    last_medical_exam DATE,
+
+    -- Physical Activity
+    activity_level activity_level_enum NOT NULL,
+    training_experience training_experience_enum NOT NULL,
+    exercise_types exercise_type_enum[],
+    exercise_other TEXT,
+
+    -- Training Goals
+    goals goal_enum[] NOT NULL,
+    goal_other TEXT,
+    specific_goal TEXT,
+    training_availability training_availability_enum NOT NULL,
+
+    -- Nutrition and Lifestyle
+    nutrition_type nutrition_type_enum NOT NULL,
+    nutrition_other TEXT,
+    eats_processed_food processed_food_enum NOT NULL,
+    sleep_hours INTEGER  NOT NULL CHECK (sleep_hours BETWEEN 4 AND 10),
+    stress_level stress_level_enum NOT NULL,
+    stress_comments TEXT,
+
+    -- Other Information
+    had_personal_trainer BOOLEAN NOT NULL DEFAULT FALSE,
+    personal_trainer_experience TEXT,
+    wants_progress_tracking BOOLEAN NOT NULL DEFAULT FALSE,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE schedule (
+    id SERIAL PRIMARY KEY,
+    anamnesis_id INTEGER NOT NULL REFERENCES anamnesis(id) ON DELETE CASCADE,
+    week_day week_day_enum NOT NULL,
+    start_hour TIME NOT NULL,
+    end_hour TIME NOT NULL
+);
+
+CREATE TABLE exercise (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    sets INTEGER NOT NULL CHECK (sets > 0),
+    repetitions INTEGER NOT NULL CHECK (repetitions >= 0),
+    duration INTEGER NOT NULL CHECK (duration >= 0),
+    rest_seconds INTEGER NOT NULL CHECK (rest_seconds >= 0),
+    demonstration_url TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (repetitions > 0 AND duration = 0) OR
+        (duration > 0 AND repetitions = 0)
+    )
+);
+
+CREATE TABLE workout (
+    id SERIAL PRIMARY KEY,
+    trainer_id INTEGER NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    exercise_signature TEXT UNIQUE, --varchar(64)
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE OR REPLACE FUNCTION update_workout_modtime()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_update_workout_modtime
+BEFORE UPDATE ON workout
+FOR EACH ROW
+EXECUTE PROCEDURE update_workout_modtime();
+
+CREATE TABLE workout_clients (
+    workout_id INTEGER NOT NULL
+        REFERENCES workout(id)
+        ON DELETE CASCADE,
+    client_id INTEGER NOT NULL
+        REFERENCES users(id)
+        ON DELETE CASCADE,
+    date DATE NOT NULL,
+    start_time TIMESTAMP,
+    end_time TIMESTAMP,
+    status workout_status_enum DEFAULT '0' NOT NULL,
+    PRIMARY KEY (workout_id, client_id, date)
+);
+
+CREATE TABLE workout_exercises (
+    workout_id INTEGER NOT NULL
+        REFERENCES workout(id)
+        ON DELETE CASCADE,
+    exercise_id INTEGER NOT NULL
+        REFERENCES exercise(id)
+        ON DELETE CASCADE,
+    sequence_order INTEGER NOT NULL CHECK (sequence_order > 0),
+    custom_sets        INTEGER    DEFAULT NULL CHECK (custom_sets > 0),
+    custom_repetitions INTEGER    DEFAULT NULL CHECK (custom_repetitions > 0),
+    custom_rest_seconds INTEGER   DEFAULT NULL CHECK (custom_rest_seconds >= 0),
+    PRIMARY KEY (workout_id, sequence_order)
+);
+
+CREATE OR REPLACE VIEW workout_plan AS
+SELECT
+  we.workout_id,
+  we.sequence_order,
+  e.id           AS exercise_id,
+  e.name,
+  COALESCE(we.custom_sets,        e.sets)        AS sets,
+  COALESCE(we.custom_repetitions, e.repetitions) AS repetitions,
+  COALESCE(we.custom_rest_seconds,e.rest_seconds)AS rest_seconds,
+  e.duration
+FROM workout_exercises we
+JOIN exercise e ON e.id = we.exercise_id;
+
+CREATE OR REPLACE VIEW latest_client_workout AS
+SELECT
+    u.name,
+    u.email,
+    u.phone,
+    u.parent_user_id,
+    MAX(CASE WHEN wc.status = '2'::workout_status_enum THEN wc.date ELSE NULL END) AS last_workout_date
+FROM
+    users u
+LEFT JOIN workout_clients wc ON wc.client_id = u.id
+WHERE
+    u.user_type = '3'::user_type_enum
+GROUP BY
+    u.id;
