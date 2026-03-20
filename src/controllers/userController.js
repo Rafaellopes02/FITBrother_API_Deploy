@@ -49,29 +49,32 @@ const createUser = async (req, res) => {
     const registration_code_hash = await hashRegisterCode(plain_registration_code);
 
     const newUser = await prisma.user.create({
-      data: {
-        registrationCode: registration_code_hash,
-        registrationStatus: false,
-        name: name,
-        email: email,
-        passwordHash: password_hash,
-        phone: phone || null, 
-        userType: prismaUserType,
-        parentUserId: parent_user_id ? parseInt(parent_user_id) : (prismaUserType === 'USER_TYPE_0' ? 0 : null),
-        //parentUserId: parent_user_id ? parseInt(parent_user_id) : null,
-        dateOfBirth: date_of_birth ? new Date(date_of_birth) : null
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        userType: true,
-        registrationStatus: true,
-        parentUserId: true,
-        dateOfBirth: true,
-        profile_image: true,
+  data: {
+    registrationCode: registration_code_hash,
+    registrationStatus: false,
+    name: name,
+    email: email,
+    passwordHash: password_hash,
+    phone: phone || null,
+    userType: prismaUserType,
+    dateOfBirth: date_of_birth ? new Date(date_of_birth) : null,
+    ...(parent_user_id && {
+      parentUser: {
+        connect: { id: parseInt(parent_user_id) }
       }
-    });
+    })
+  },
+  select: {
+    id: true,
+    name: true,
+    email: true,
+    userType: true,
+    registrationStatus: true,
+    parentUserId: true,
+    dateOfBirth: true,
+    profile_image: true,
+  }
+});
 
     return res.status(201).json({
       message: 'Utilizador criado com sucesso!',
