@@ -57,7 +57,8 @@ const createUser = async (req, res) => {
         passwordHash: password_hash,
         phone: phone || null, 
         userType: prismaUserType,
-        parentUserId: parent_user_id ? parseInt(parent_user_id) : (prismaUserType === 'USER_TYPE_0' ? 0 : null),
+        //parentUserId: parent_user_id ? parseInt(parent_user_id) : (prismaUserType === 'USER_TYPE_0' ? 0 : null),
+        parentUserId: parent_user_id ? parseInt(parent_user_id) : null,
         dateOfBirth: date_of_birth ? new Date(date_of_birth) : null
       },
       select: {
