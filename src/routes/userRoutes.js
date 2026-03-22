@@ -32,48 +32,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage });
-
-/*router.post('/users/:id/profile-image', upload.single('file'), async (req, res) => {
-  try {
-    const userId = parseInt(req.params.id);
-    if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
-
-    const imagePath = `http://localhost:3001/uploads/profile_pics/${req.file.filename}`;
-
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      return res.status(404).json({ error: 'Utilizador não encontrado.' });
-    }
-
-    if (user.profile_image) {
-      try {
-        const oldImageName = path.basename(user.profile_image);
-        const oldImagePath = path.join(uploadPath, oldImageName);
-
-        if (fs.existsSync(oldImagePath)) {
-          fs.unlinkSync(oldImagePath);
-        }
-      } catch (error) {
-        console.warn('Erro ao tentar apagar imagem antiga:', error.message);
-      }
-    }
-
-    const updatedUser = await prisma.user.update({
-      where: { id: userId },
-      data: { profile_image: imagePath }
-    });
-
-    res.json({
-      message: 'Imagem de perfil atualizada com sucesso!',
-      user: updatedUser
-    });
-
-  } catch (err) {
-    console.error('Erro ao atualizar imagem de perfil:', err);
-    res.status(500).json({ error: 'Erro ao atualizar imagem de perfil.' });
-  }
-});*/
+//const upload = multer({ storage });
 
 const { cloudinary, upload } = require('../config/cloudinary');
 
