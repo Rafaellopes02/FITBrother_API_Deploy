@@ -12,42 +12,19 @@ const {
 } = require('../controllers/userController');
 
 const prisma = require('../prisma');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-
-const uploadPath = path.join(process.cwd(), 'uploads', 'profile_pics');
-
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-//const upload = multer({ storage });
-
 const { cloudinary, upload } = require('../config/cloudinary');
 
+// === UPLOAD IMAGEM DE PERFIL ===
 router.post('/users/:id/profile-image', upload.single('file'), async (req, res) => {
   try {
     const userId = parseInt(req.params.id);
     if (!req.file) return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
 
-    // O Cloudinary devolve o URL directo
     const imageUrl = req.file.path;
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return res.status(404).json({ error: 'Utilizador não encontrado.' });
 
-    // Apagar imagem antiga do Cloudinary
     if (user.profile_image) {
       try {
         const publicId = user.profile_image.split('/').slice(-2).join('/').split('.')[0];
@@ -69,65 +46,88 @@ router.post('/users/:id/profile-image', upload.single('file'), async (req, res) 
     res.status(500).json({ error: 'Erro ao atualizar imagem de perfil.' });
   }
 });
-```
 
-## 4. Adicionar variáveis no Render
+// === ROTAS EXISTENTES ===
 
-No Render → o teu serviço → **Environment**, adiciona:
-```
-CLOUDINARY_CLOUD_NAME = de6hkgycg
-CLOUDINARY_API_KEY = 221338642143778
-CLOUDINARY_API_SECRET = rPn7aQK9wb_nOZ00dfiLqe1ZttE
-
-
-
-// ===  ROTAS EXISTENTES ===
-
-// Criar novo utilizador
+/**
+ * @swagger
+ * /api/users:
+ *   post:
+ *     summary: Criar novo utilizador
+ *     tags: [Users]
+ */
 router.post('/users', createUser);
 
-// Obter utilizadores por parent ID
+/**
+ * @swagger
+ * /api/users/parent/{parent_user_id}:
+ *   get:
+ *     summary: Obter utilizadores por parent ID
+ *     tags: [Users]
+ */
 router.get('/users/parent/:parent_user_id', getUsersByParentId);
 
-// Obter utilizador por ID
+/**
+ * @swagger
+ * /api/users/id/{id}:
+ *   get:
+ *     summary: Obter utilizador por ID
+ *     tags: [Users]
+ */
 router.get('/users/id/:id', getUserById);
 
-// Atualizar utilizador
+/**
+ * @swagger
+ * /api/users/edit:
+ *   put:
+ *     summary: Atualizar utilizador
+ *     tags: [Users]
+ */
 router.put('/users/edit', updateUser);
 
-// Apagar utilizador
+/**
+ * @swagger
+ * /api/users/delete/{id}:
+ *   delete:
+ *     summary: Apagar utilizador
+ *     tags: [Users]
+ */
 router.delete('/users/delete/:id', deleteUserById);
 
-// Reativar utilizador
+/**
+ * @swagger
+ * /api/users/reactivate/{id}:
+ *   put:
+ *     summary: Reativar utilizador
+ *     tags: [Users]
+ */
 router.put('/users/reactivate/:id', reactivateUserById);
 
+/**
+ * @swagger
+ * /api/dashboard/stats/{trainer_id}:
+ *   get:
+ *     summary: Estatísticas do dashboard do treinador
+ *     tags: [Users]
+ */
 router.get('/dashboard/stats/:trainer_id', getTrainerDashboardStats);
 
 /**
  * @swagger
  * /api/trainer/{trainerId}/sessions:
- * get:
- * summary: Get upcoming sessions for a trainer
- * tags: [Users]
- * parameters:
- * - in: path
- * name: trainerId
- * required: true
- * schema:
- * type: integer
- * description: ID of the trainer
- * - in: query
- * name: date
- * schema:
- * type: string
- * description: Date filter (e.g., 'today' or 'YYYY-MM-DD')
- * responses:
- * 200:
- * description: List of upcoming sessions
- * 400:
- * description: Invalid request
- * 500:
- * description: Server error
+ *   get:
+ *     summary: Get upcoming sessions for a trainer
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: trainerId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: date
+ *         schema:
+ *           type: string
  */
 router.get('/trainer/:trainerId/sessions', getTrainerSessions);
 
