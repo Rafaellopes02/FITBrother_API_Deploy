@@ -89,7 +89,7 @@ model User {
   phone               BigInt?           @unique
   dateOfBirth         DateTime?         @map("date_of_birth") @db.Date
   userType            user_type_enum    @map("user_type")
-  parentUserId        Int               @map("parent_user_id")
+  parentUserId        Int?              @map("parent_user_id")
   isDeleted           Boolean           @default(false)
   emergency_name      String?           @db.VarChar(100)
   emergency_phone     String?           @db.VarChar(20)
@@ -97,7 +97,7 @@ model User {
   created_at          DateTime          @default(now())
   clientAnamnesis     Anamnesis[]       @relation("ClientAnamnesis")
   trainerAnamnesis    Anamnesis[]       @relation("TrainerAnamnesis")
-  parentUser          User              @relation("UserToParentUser", fields: [parentUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parentUser          User?             @relation("UserToParentUser", fields: [parentUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   childUsers          User[]            @relation("UserToParentUser")
   createdWorkouts     Workout[]         @relation("TrainerWorkouts")
   assignedWorkouts    WorkoutClient[]   @relation("ClientToWorkout")
