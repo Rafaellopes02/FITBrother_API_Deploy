@@ -5,7 +5,7 @@ const sendReport = async (req, res) => {
   const screenshot = req.file; // Vem do multer
 
   try {
-    // 1. Configurar o Transporte (Gmail)
+    // 1. Configurar o Transporte
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {

@@ -59,10 +59,13 @@ const createWorkout = async (req, res) => {
   }
 };
 
-const getAllWorkouts = async (_, res) => {
+const getAllWorkouts = async (req, res) => {
   try {
     const workouts = await prisma.workout.findMany({
-      orderBy: { id: 'desc' }
+      orderBy: { id: 'desc' },
+      include: {
+        workoutExercises: true 
+      }
     });
     const formattedWorkouts = workouts.map(w => ({
       ...w,
@@ -97,14 +100,8 @@ const getWorkoutById = async (req, res) => {
       return res.status(404).json({ error: 'Treino não encontrado' });
     }
 
-    res.json({
-      ...workout,
-      trainer_id: workout.trainerId,
-      exercise_signature: workout.exerciseSignature,
-      created_at: workout.createdAt,
-      updated_at: workout.updatedAt,
-      workout_exercises: workout.workoutExercises 
-    });
+    res.status(200).json({ workout });
+    
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro ao buscar treino' });
@@ -260,12 +257,23 @@ const getWorkoutByClientId = async (req, res) => {
   try {
     const results = await prisma.workoutClient.findMany({
       where: { clientId: parseInt(id) },
+      include: {
+        workout: {
+          include: {
+            workoutExercises: {
+              include: { exercise: true },
+              orderBy: { sequenceOrder: 'asc' }
+            }
+          }
+        }
+      },
       orderBy: { date: 'desc' }
     });
+    
     const formatted = results.map(r => ({
       ...r,
       workout_id: r.workoutId,
-      status: workoutStatusReverseMap[r.status]
+      status: workoutStatusReverseMap[r.status] || r.status
     }));
     res.json(formatted);
   } catch (err) {
@@ -279,12 +287,24 @@ const getClientSchedule = async (req, res) => {
     const { clientId } = req.params;
     const schedule = await prisma.workoutClient.findMany({
       where: { clientId: parseInt(clientId) },
-      include: { workout: { select: { name: true } } },
+      include: { 
+        workout: { 
+          include: {
+            workoutExercises: {
+              include: { exercise: true },
+              orderBy: { sequenceOrder: 'asc' }
+            }
+          }
+        },
+        feedback: true
+      },
       orderBy: { date: 'asc' }
     });
+    
     const formatted = schedule.map(item => ({
       ...item,
-      status: workoutStatusReverseMap[item.status] || item.status
+      status: workoutStatusReverseMap[item.status] || item.status,
+      hasFeedback: !!item.feedback // Cria uma flag true/false
     }));
     res.status(200).json(formatted);
   } catch (error) {

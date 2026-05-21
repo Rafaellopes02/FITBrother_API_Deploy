@@ -53,17 +53,18 @@ model Anamnesis {
 }
 
 model Exercise {
-  id               Int               @id @default(autoincrement())
-  name             String            @unique @db.VarChar(255)
-  sets             Int
-  repetitions      Int
-  duration         Int
-  restSeconds      Int               @map("rest_seconds")
-  demonstrationUrl String?           @map("demonstration_url")
-  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamp(6)
-  instructions String? @db.Text  
-  tips String[]
-  workoutExercises WorkoutExercise[]
+  id                  Int                       @id @default(autoincrement())
+  name                String                    @unique @db.VarChar(255)
+  sets                Int
+  repetitions         Int
+  duration            Int
+  restSeconds         Int                       @map("rest_seconds")
+  demonstrationUrl    String?                   @map("demonstration_url")
+  createdAt           DateTime                  @default(now()) @map("created_at") @db.Timestamp(6)
+  instructions        String?                   @db.Text
+  tips                String[]
+  workoutExercises    WorkoutExercise[]
+  adjustmentExercises TrainAdjustmentExercise[]
 
   @@map("exercise")
 }
@@ -89,18 +90,31 @@ model User {
   phone               BigInt?           @unique
   dateOfBirth         DateTime?         @map("date_of_birth") @db.Date
   userType            user_type_enum    @map("user_type")
+  
   parentUserId        Int?              @map("parent_user_id")
+  
   isDeleted           Boolean           @default(false)
   emergency_name      String?           @db.VarChar(100)
   emergency_phone     String?           @db.VarChar(20)
   profile_image       String?           @db.VarChar(500)
   created_at          DateTime          @default(now())
+  
   clientAnamnesis     Anamnesis[]       @relation("ClientAnamnesis")
   trainerAnamnesis    Anamnesis[]       @relation("TrainerAnamnesis")
+  
   parentUser          User?             @relation("UserToParentUser", fields: [parentUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  
   childUsers          User[]            @relation("UserToParentUser")
   createdWorkouts     Workout[]         @relation("TrainerWorkouts")
   assignedWorkouts    WorkoutClient[]   @relation("ClientToWorkout")
+  trainerAdjustments  TrainAdjustment[] @relation("TrainerAdjustments")
+  clientAdjustments   TrainAdjustment[] @relation("ClientAdjustments")
+
+  favoriteClients     FavoriteClient[]  @relation("TrainerFavorites")
+  favoritedByTrainers FavoriteClient[]  @relation("ClientIsFavorite")
+
+  clientAssessments   PhysicalAssessment[] @relation("ClientAssessments")
+  trainerAssessments  PhysicalAssessment[] @relation("TrainerAssessments")
 
   @@map("users")
 }
@@ -116,6 +130,7 @@ model Workout {
   trainer           User              @relation("TrainerWorkouts", fields: [trainerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   workoutClients    WorkoutClient[]   @relation("WorkoutToClient")
   workoutExercises  WorkoutExercise[]
+  adjustments       TrainAdjustment[] @relation("WorkoutAdjustments")
 
   @@map("workout")
 }
@@ -127,10 +142,8 @@ model WorkoutClient {
   startTime DateTime?           @map("start_time") @db.Timestamp(6)
   endTime   DateTime?           @map("end_time") @db.Timestamp(6)
   status    workout_status_enum @default(WORKOUT_STATUS_0)
-  
   client    User                @relation("ClientToWorkout", fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   workout   Workout             @relation("WorkoutToClient", fields: [workoutId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  
   feedback  WorkoutFeedback?
 
   @@id([workoutId, clientId, date])
@@ -142,14 +155,11 @@ model WorkoutFeedback {
   workoutId          Int           @map("workout_id")
   clientId           Int           @map("client_id")
   date               DateTime      @db.Date
-  
   difficulty         String        @db.VarChar(50)
   fatigue            Int           @default(5)
   executionNotes     String?       @map("execution_notes") @db.Text
   adjustmentsRequest String?       @map("adjustments_request") @db.Text
-  
   createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
-
   workoutSession     WorkoutClient @relation(fields: [workoutId, clientId, date], references: [workoutId, clientId, date], onDelete: Cascade)
 
   @@unique([workoutId, clientId, date])
@@ -168,6 +178,102 @@ model WorkoutExercise {
 
   @@id([workoutId, sequenceOrder])
   @@map("workout_exercises")
+}
+
+model TrainAdjustment {
+  id                Int                       @id @default(autoincrement())
+  trainerId         Int                       @map("trainer_id")
+  originalWorkoutId Int                       @map("original_workout_id")
+  clientId          Int                       @map("client_id")
+  name              String                    @db.VarChar(255)
+  description       String?
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  trainer           User                      @relation("TrainerAdjustments", fields: [trainerId], references: [id], onDelete: Cascade)
+  originalWorkout   Workout                   @relation("WorkoutAdjustments", fields: [originalWorkoutId], references: [id], onDelete: Cascade)
+  client            User                      @relation("ClientAdjustments", fields: [clientId], references: [id], onDelete: Cascade)
+  exercises         TrainAdjustmentExercise[]
+
+  @@map("train_adjustments")
+}
+
+model TrainAdjustmentExercise {
+  id                Int             @id @default(autoincrement())
+  adjustmentId      Int             @map("adjustment_id")
+  exerciseId        Int             @map("exercise_id")
+  sequenceOrder     Int             @map("sequence_order")
+  customSets        Int?            @map("custom_sets")
+  customRepetitions Int?            @map("custom_repetitions")
+  customRestSeconds Int?            @map("custom_rest_seconds")
+  adjustment        TrainAdjustment @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  exercise          Exercise        @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@map("train_adjustment_exercises")
+}
+
+model FavoriteClient {
+  id        Int      @id @default(autoincrement())
+  trainerId Int
+  clientId  Int
+  createdAt DateTime @default(now())
+
+  trainer   User     @relation("TrainerFavorites", fields: [trainerId], references: [id])
+  client    User     @relation("ClientIsFavorite", fields: [clientId], references: [id])
+
+  @@unique([trainerId, clientId]) // Impede duplicados
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  content   String
+  senderId  Int
+  receiverId Int
+  createdAt DateTime @default(now())
+}
+
+model PhysicalAssessment {
+  id              Int      @id @default(autoincrement())
+  clientId        Int
+  trainerId       Int
+  date            DateTime @default(now())
+
+  // 1. Antropometria
+  weight          Float?   // Peso em kg
+  height          Float?   // Altura em cm
+  bmi             Float?   // IMC
+  armCircum       Float?   // Braço
+  waistCircum     Float?   // Cintura
+  hipCircum       Float?   // Quadril
+  thighCircum     Float?   // Coxa
+
+  // 2. Composição Corporal
+  bodyFatPercent  Float?   // Percentual de gordura
+  muscleMass      Float?   // Massa muscular (kg ou %)
+
+  // 3. Avaliação Postural
+  postureNotes    String?  @db.Text
+  postureImages   String?  @db.Text // Vamos guardar URLs das imagens como JSON (ex: "['img1.jpg']")
+
+  // 4. Avaliação Neuromotora e Funcional
+  flexibility     String?  // Ex: "Alcançou os pés (+5cm)"
+  balance         String?  // Notas sobre coordenação/equilíbrio
+
+  // 5. Capacidade Aeróbica e Muscular
+  cardioNotes     String?  @db.Text // Ex: "Correu 2km em 12 min. FC máx 170"
+  pushups         Int?     // Flexões
+  situps          Int?     // Abdominais
+  squats          Int?     // Agachamentos
+  plankTimeSec    Int?     // Prancha (em segundos)
+
+  // Feedback do PT
+  feedback        String?  @db.Text
+
+  // Relações
+  client          User     @relation("ClientAssessments", fields: [clientId], references: [id])
+  trainer         User     @relation("TrainerAssessments", fields: [trainerId], references: [id])
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 // --- ENUMS ---

@@ -7,7 +7,6 @@ const multer = require('multer');
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// POST /api/support/report
 router.post('/report', upload.single('screenshot'), supportController.sendReport);
 
 module.exports = router;

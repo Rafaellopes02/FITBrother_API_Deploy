@@ -1,7 +1,39 @@
 const express = require('express');
-const { createAnamnesisPersonal, updateAnamnesisHealth, updateAnamnesisActivity, updateAnamnesisGoals, updateAnamnesisNutrition, updateAnamnesisOther, createCompleteAnamnesis, updateCompleteAnamnesis, getAnamnesisByClientId, getLastAnamnesisByClientId, deleteAnamnesisById } = require('../controllers/anamnesisController');
+const { 
+  createAnamnesisPersonal, 
+  updateAnamnesisHealth, 
+  updateAnamnesisActivity, 
+  updateAnamnesisGoals, 
+  updateAnamnesisNutrition, 
+  updateAnamnesisOther, 
+  createCompleteAnamnesis, 
+  updateCompleteAnamnesis, 
+  getAnamnesisByClientId, 
+  getLastAnamnesisByClientId, 
+  deleteAnamnesisById 
+} = require('../controllers/anamnesisController');
+
+const { certifyAccessToken } = require('../utils/authenticateUtils');
 
 const router = express.Router();
+
+// MIDDLEWARE DE AUTENTICAÇÃO
+const authenticate = async (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Tira a palavra "Bearer"
+
+  if (!token) {
+    return res.status(401).json({ error: 'Token de autenticação não fornecido.' });
+  }
+
+  try {
+    const decoded = await certifyAccessToken(token);
+    req.user = decoded;
+    next(); // Passou no teste, pode avançar para o controlador!
+  } catch (err) {
+    return res.status(403).json({ error: 'Token inválido ou expirado.' });
+  }
+};
 
 /**
  * @swagger
@@ -10,6 +42,8 @@ const router = express.Router();
  * summary: Etapa 1 - Informação pessoal da anamnese
  * description: Cria a primeira etapa da anamnese com informações pessoais do cliente.
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * requestBody:
  * required: true
  * content:
@@ -32,10 +66,12 @@ const router = express.Router();
  * responses:
  * 201:
  * description: Etapa pessoal criada com sucesso
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Campos obrigatórios em falta
  */
-router.post('/users/anamnesis/personal', createAnamnesisPersonal);
+router.post('/users/anamnesis/personal', authenticate, createAnamnesisPersonal);
 
 /**
  * @swagger
@@ -44,6 +80,8 @@ router.post('/users/anamnesis/personal', createAnamnesisPersonal);
  * summary: Etapa 2 - Histórico de saúde da anamnese
  * description: Atualiza o histórico de saúde do cliente na anamnese.
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * parameters:
  * - in: path
  * name: id
@@ -73,10 +111,12 @@ router.post('/users/anamnesis/personal', createAnamnesisPersonal);
  * responses:
  * 200:
  * description: Histórico de saúde atualizado com sucesso
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Campos obrigatórios em falta
  */
-router.patch('/users/anamnesis/:id/health', updateAnamnesisHealth);
+router.patch('/users/anamnesis/:id/health', authenticate, updateAnamnesisHealth);
 
 /**
  * @swagger
@@ -85,6 +125,8 @@ router.patch('/users/anamnesis/:id/health', updateAnamnesisHealth);
  * summary: Etapa 3 - Atividade física da anamnese
  * description: Atualiza as informações sobre atividade física do cliente.
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * parameters:
  * - in: path
  * name: id
@@ -109,10 +151,12 @@ router.patch('/users/anamnesis/:id/health', updateAnamnesisHealth);
  * responses:
  * 200:
  * description: Atividade física atualizada com sucesso
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Campos obrigatórios em falta
  */
-router.patch('/users/anamnesis/:id/activity', updateAnamnesisActivity);
+router.patch('/users/anamnesis/:id/activity', authenticate, updateAnamnesisActivity);
 
 /**
  * @swagger
@@ -121,6 +165,8 @@ router.patch('/users/anamnesis/:id/activity', updateAnamnesisActivity);
  * summary: Etapa 4 - Objetivos da anamnese
  * description: Atualiza os objetivos de treino e saúde do cliente.
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * parameters:
  * - in: path
  * name: id
@@ -145,10 +191,12 @@ router.patch('/users/anamnesis/:id/activity', updateAnamnesisActivity);
  * responses:
  * 200:
  * description: Objetivos atualizados com sucesso
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Campos obrigatórios em falta
  */
-router.patch('/users/anamnesis/:id/goals', updateAnamnesisGoals);
+router.patch('/users/anamnesis/:id/goals', authenticate, updateAnamnesisGoals);
 
 /**
  * @swagger
@@ -157,6 +205,8 @@ router.patch('/users/anamnesis/:id/goals', updateAnamnesisGoals);
  * summary: Etapa 5 - Nutrição e estilo de vida da anamnese
  * description: Atualiza informações sobre nutrição e estilo de vida do cliente.
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * parameters:
  * - in: path
  * name: id
@@ -183,10 +233,12 @@ router.patch('/users/anamnesis/:id/goals', updateAnamnesisGoals);
  * responses:
  * 200:
  * description: Nutrição atualizada com sucesso
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Campos obrigatórios em falta
  */
-router.patch('/users/anamnesis/:id/nutrition', updateAnamnesisNutrition);
+router.patch('/users/anamnesis/:id/nutrition', authenticate, updateAnamnesisNutrition);
 
 /**
  * @swagger
@@ -195,6 +247,8 @@ router.patch('/users/anamnesis/:id/nutrition', updateAnamnesisNutrition);
  * summary: Etapa 6 - Outras informações da anamnese
  * description: Atualiza informações complementares da anamnese do cliente.
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * parameters:
  * - in: path
  * name: id
@@ -218,10 +272,12 @@ router.patch('/users/anamnesis/:id/nutrition', updateAnamnesisNutrition);
  * responses:
  * 200:
  * description: Outras informações atualizadas com sucesso
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Campos obrigatórios em falta
  */
-router.patch('/users/anamnesis/:id/other', updateAnamnesisOther);
+router.patch('/users/anamnesis/:id/other', authenticate, updateAnamnesisOther);
 
 /**
  * @swagger
@@ -230,6 +286,8 @@ router.patch('/users/anamnesis/:id/other', updateAnamnesisOther);
  * summary: Cria uma Anamnese Completa
  * description: Registra todas as etapas da anamnese de uma só vez.
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * requestBody:
  * required: true
  * content:
@@ -304,27 +362,14 @@ router.patch('/users/anamnesis/:id/other', updateAnamnesisOther);
  * responses:
  * 201:
  * description: Anamnese completa criada com sucesso
- * content:
- * application/json:
- * schema:
- * type: object
- * properties:
- * message:
- * type: string
- * example: "Anamnese completa criada com sucesso."
- * anamnesis_id:
- * type: integer
- * example: 123
- * created_at:
- * type: string
- * format: date-time
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Campos obrigatórios em falta ou dados inválidos
  * 500:
  * description: Erro ao criar anamnese completa
  */
-router.post('/users/anamnesis/complete', createCompleteAnamnesis);
-
+router.post('/users/anamnesis/complete', authenticate, createCompleteAnamnesis);
 
 /**
  * @swagger
@@ -333,6 +378,8 @@ router.post('/users/anamnesis/complete', createCompleteAnamnesis);
  * summary: Atualiza uma Anamnese Completa
  * description: Atualiza todas as etapas da anamnese de uma só vez para um cliente existente.
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * parameters:
  * - in: path
  * name: id
@@ -359,40 +406,11 @@ router.post('/users/anamnesis/complete', createCompleteAnamnesis);
  * $ref: '#/components/schemas/AnamnesisNutrition'
  * other:
  * $ref: '#/components/schemas/AnamnesisOther'
- * examples:
- * CompleteUpdateExample:
- * summary: Exemplo de atualização completa de anamnese
- * value:
- * personal:
- * full_name: "João Silva"
- * age: 31
- * weight_kg: 76
- * height_cm: 180
- * occupation: "1"
- * health:
- * medical_conditions: ["4"]
- * spine_joint_injuries: false
- * regular_medication: false
- * allergies: false
- * activity:
- * activity_level: "2"
- * training_experience: "2"
- * exercise_types: ["1", "2"]
- * goals:
- * goals: ["1"]
- * specific_goal: "Ganho de massa muscular"
- * training_availability: "2"
- * nutrition:
- * nutrition_type: "1"
- * eats_processed_food: "1"
- * sleep_hours: 8
- * stress_level: "2"
- * other:
- * had_personal_trainer: false
- * wants_progress_tracking: true
  * responses:
  * 200:
  * description: Anamnese completa atualizada com sucesso
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Campos obrigatórios em falta ou dados inválidos
  * 404:
@@ -400,7 +418,7 @@ router.post('/users/anamnesis/complete', createCompleteAnamnesis);
  * 500:
  * description: Erro ao atualizar anamnese completa
  */
-router.patch('/users/anamnesis/:id/complete', updateCompleteAnamnesis);
+router.patch('/users/anamnesis/:id/complete', authenticate, updateCompleteAnamnesis);
 
 /**
  * @swagger
@@ -408,6 +426,8 @@ router.patch('/users/anamnesis/:id/complete', updateCompleteAnamnesis);
  * get:
  * summary: Lista todas as anamneses de um cliente
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * parameters:
  * - in: path
  * name: client_id
@@ -419,22 +439,14 @@ router.patch('/users/anamnesis/:id/complete', updateCompleteAnamnesis);
  * responses:
  * 200:
  * description: Lista de anamneses retornada com sucesso
- * content:
- * application/json:
- * schema:
- * type: object
- * properties:
- * anamneses:
- * type: array
- * items:
- * $ref: '#/components/schemas/AnamnesisPersonal'
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Parâmetro client_id é obrigatório
  * 500:
  * description: Erro interno ao buscar anamneses
  */
-router.get('/users/anamnesis/client/:client_id', getAnamnesisByClientId);
-
+router.get('/users/anamnesis/client/:client_id', authenticate, getAnamnesisByClientId);
 
 /**
  * @swagger
@@ -442,6 +454,8 @@ router.get('/users/anamnesis/client/:client_id', getAnamnesisByClientId);
  * get:
  * summary: Retorna a última anamnese de um cliente
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * parameters:
  * - in: path
  * name: client_id
@@ -453,18 +467,12 @@ router.get('/users/anamnesis/client/:client_id', getAnamnesisByClientId);
  * responses:
  * 200:
  * description: Última anamnese retornada com sucesso
- * content:
- * application/json:
- * schema:
- * type: object
- * properties:
- * anamnesis:
- * $ref: '#/components/schemas/AnamnesisPersonal'
+ * 401:
+ * description: Não autenticado
  * 404:
  * description: Nenhuma anamnese encontrada para este cliente
  */
-router.get('/users/anamnesis/client/:client_id/last', getLastAnamnesisByClientId);
-
+router.get('/users/anamnesis/client/:client_id/last', authenticate, getLastAnamnesisByClientId);
 
 /**
  * @swagger
@@ -472,6 +480,8 @@ router.get('/users/anamnesis/client/:client_id/last', getLastAnamnesisByClientId
  * delete:
  * summary: Remove uma anamnese pelo ID
  * tags: [Anamnesis]
+ * security:
+ *   - bearerAuth: []
  * parameters:
  * - in: path
  * name: id
@@ -483,45 +493,15 @@ router.get('/users/anamnesis/client/:client_id/last', getLastAnamnesisByClientId
  * responses:
  * 200:
  * description: Anamnese apagada com sucesso
- * content:
- * application/json:
- * schema:
- * type: object
- * properties:
- * message:
- * type: string
- * example: "Anamnese apagada com sucesso."
+ * 401:
+ * description: Não autenticado
  * 400:
  * description: Parâmetro id é obrigatório
- * content:
- * application/json:
- * schema:
- * type: object
- * properties:
- * error:
- * type: string
- * example: "Parâmetro id é obrigatório."
  * 404:
  * description: Anamnese não encontrada
- * content:
- * application/json:
- * schema:
- * type: object
- * properties:
- * error:
- * type: string
- * example: "Anamnese não encontrada."
  * 500:
  * description: Erro interno ao apagar anamnese
- * content:
- * application/json:
- * schema:
- * type: object
- * properties:
- * error:
- * type: string
- * example: "Erro interno ao apagar anamnese."
  */
-router.delete('/anamnesis/:id', deleteAnamnesisById);
+router.delete('/anamnesis/:id', authenticate, deleteAnamnesisById);
 
 module.exports = router;

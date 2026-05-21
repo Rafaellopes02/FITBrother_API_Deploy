@@ -3,6 +3,7 @@ const { Prisma } = require('@prisma/client');
 const crypto = require('crypto');
 const { hashPassword } = require('../utils/passwordUtils');
 const { hashRegisterCode } = require('../utils/registerCodeUtils');
+const authenticateUtil = require('../utils/authenticateUtils.js');
 
 const userTypeMap = {
   '0': 'USER_TYPE_0',
@@ -23,7 +24,7 @@ const createUser = async (req, res) => {
     date_of_birth
   } = req.body;
 
-  // --- Validações ---
+  // --- Validações Básicas ---
   if (!name || !email || !password || !confirm_password || typeof user_type === 'undefined') {
     return res.status(400).json({
       message: 'Nome, email, password, confirmação de password e tipo de utilizador são obrigatórios.'
@@ -39,42 +40,54 @@ const createUser = async (req, res) => {
     return res.status(400).json({ message: 'Tipo de utilizador inválido.' });
   }
   
-  if ((prismaUserType === 'USER_TYPE_1' || prismaUserType === 'USER_TYPE_2') && !parent_user_id) {
-    return res.status(400).json({ message: 'parent_user_id é obrigatório para Cliente ou Trainer.' });
-  }
+  // --- LÓGICA BLINDADA DO PARENT ID ---
+  let finalParentId = null;
+
+  if (prismaUserType === 'USER_TYPE_3') {
+    // Se for Aluno, EXIGE um parent_user_id válido
+    if (!parent_user_id) {
+      return res.status(400).json({ message: 'parent_user_id é obrigatório para um Aluno.' });
+    }
+    finalParentId = parseInt(parent_user_id);
+  } 
+  // NOTA: Se for Admin (0) ou Treinador (1 e 2), o finalParentId fica a NULL (ignora o que o frontend mandar)
 
   try {
     const password_hash = await hashPassword(password);
     const plain_registration_code = crypto.randomBytes(3).toString('hex').toUpperCase();
     const registration_code_hash = await hashRegisterCode(plain_registration_code);
 
+    let finalParentId = null;
+    if (prismaUserType === 'USER_TYPE_3' && parent_user_id) {
+        finalParentId = parseInt(parent_user_id);
+    }
+
+    const defaultAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=1F2937&color=FACC15&bold=true&size=256`;
+
     const newUser = await prisma.user.create({
-  data: {
-    registrationCode: registration_code_hash,
-    registrationStatus: false,
-    name: name,
-    email: email,
-    passwordHash: password_hash,
-    phone: phone || null,
-    userType: prismaUserType,
-    dateOfBirth: date_of_birth ? new Date(date_of_birth) : null,
-    ...(parent_user_id && {
-      parentUser: {
-        connect: { id: parseInt(parent_user_id) }
+      data: {
+        registrationCode: registration_code_hash,
+        registrationStatus: false,
+        name: name,
+        email: email,
+        passwordHash: password_hash,
+        phone: phone ? BigInt(phone) : null,
+        userType: prismaUserType,
+        parentUserId: finalParentId,
+        dateOfBirth: date_of_birth ? new Date(date_of_birth) : null,
+        profile_image: defaultAvatar
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        userType: true,
+        registrationStatus: true,
+        parentUserId: true,
+        dateOfBirth: true,
+        profile_image: true,
       }
-    })
-  },
-  select: {
-    id: true,
-    name: true,
-    email: true,
-    userType: true,
-    registrationStatus: true,
-    parentUserId: true,
-    dateOfBirth: true,
-    profile_image: true,
-  }
-});
+    });
 
     return res.status(201).json({
       message: 'Utilizador criado com sucesso!',
@@ -84,12 +97,12 @@ const createUser = async (req, res) => {
 
   } catch (err) {
     console.error('Erro ao criar utilizador:', err);
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    if (err.code === 'P2002') {
       const target = err.meta.target.join(', ');
       return res.status(409).json({ message: `O campo '${target}' já está registado.` });
     }
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
-        return res.status(400).json({ message: 'O treinador (parent_user_id) não foi encontrado.' });
+    if (err.code === 'P2003') {
+        return res.status(400).json({ message: 'O treinador especificado não existe na base de dados.' });
     }
     return res.status(500).json({ message: 'Erro interno ao criar utilizador.' });
   }
@@ -149,10 +162,6 @@ const getUsersByParentId = async (req, res) => {
   }
 };
 
-module.exports = { getUsersByParentId };
-
-
-// --- FUNÇÃO updateUser TOTALMENTE ATUALIZADA ---
 const updateUser = async (req, res) => {
   const {
     id,
@@ -235,7 +244,6 @@ const updateUser = async (req, res) => {
   }
 };
 
-
 const getUserById = async (req, res) => {
   const { id } = req.params;
 
@@ -259,8 +267,6 @@ const getUserById = async (req, res) => {
     }
     if (user.clientAnamnesis && user.clientAnamnesis.length > 0) {
       const anamnesis = user.clientAnamnesis[0];
-      
-      // Mapear género (GENDER_1 -> 1) se necessário, ou enviar como está
       user.gender = anamnesis.gender; 
       user.height = anamnesis.heightCm;
       user.weight = anamnesis.weightKg;
@@ -295,7 +301,7 @@ const deleteUserById = async (req, res) => {
       data: { isDeleted: true }
     });
 
-    return res.status(200).json({ message: 'Utilizador apagado com sucesso.' });
+    return res.status(200).json({ message: 'Utilizador apagado com sucesso (Soft Delete).' });
 
   } catch (err) {
     console.error(err);
@@ -339,7 +345,37 @@ const reactivateUserById = async (req, res) => {
   }
 };
 
-// --- NOVA FUNÇÃO: Estatísticas do Dashboard ---
+// ELIMINAÇÃO DEFINITIVA (HARD DELETE)
+const hardDeleteUser = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const userId = parseInt(id);
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ message: 'O ID do utilizador deve ser um número.' });
+    }
+
+    // Apaga a linha da tabela Users permanentemente
+    await prisma.user.delete({
+      where: { id: userId }
+    });
+
+    return res.status(200).json({ message: 'Cliente apagado definitivamente da base de dados.' });
+  } catch (error) {
+    console.error('Erro no hard delete:', error);
+    
+    if (error.code === 'P2025') {
+      return res.status(404).json({ message: 'Utilizador não encontrado.' });
+    }
+    
+    if (error.code === 'P2003') {
+      return res.status(409).json({ error: 'Não é possível eliminar o cliente porque existem treinos ou avaliações na base de dados associadas a ele. Apague o histórico primeiro.' });
+    }
+    
+    return res.status(500).json({ error: 'Erro interno ao tentar eliminar utilizador.' });
+  }
+};
 
 const getTrainerDashboardStats = async (req, res) => {
   const { trainer_id } = req.params;
@@ -351,19 +387,14 @@ const getTrainerDashboardStats = async (req, res) => {
   try {
     const id = parseInt(trainer_id);
     
-    // --- 1. DEFINIÇÃO DE DATAS (UTC) ---
     const now = new Date();
     const todayStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
     const tomorrowStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() + 1));
     
-    // --- 2. DADOS PRINCIPAIS (Estes funcionam sempre) ---
-    
-    // A. Clientes Ativos
     const activeClientsCount = await prisma.user.count({
       where: { parentUserId: id, userType: 'USER_TYPE_3', isDeleted: false }
     });
 
-    // B. Treinos de Hoje (Baseado na tua correção anterior)
     const workoutsTodayCount = await prisma.workoutClient.count({
       where: {
         client: { parentUserId: id },
@@ -371,7 +402,6 @@ const getTrainerDashboardStats = async (req, res) => {
       }
     });
 
-    // C. Taxa de Conclusão Global
     const totalAssignments = await prisma.workoutClient.count({
       where: { client: { parentUserId: id } }
     });
@@ -382,19 +412,15 @@ const getTrainerDashboardStats = async (req, res) => {
       ? Math.round((completedAssignments / totalAssignments) * 100) 
       : 0;
 
-
-    // --- 3 CÁLCULO DE CRESCIMENTO (BLOCO SEGURO) ---
     let growthActive = 0;
     let growthWorkouts = 0;
     let growthRate = 0;
 
     try {
-      // Datas Auxiliares
       const yesterdayStart = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - 1));
       const oneWeekAgo = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - 7));
       const twoWeeksAgo = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() - 14));
 
-      // 3.1. Growth Workouts (Hoje vs Ontem)
       const workoutsYesterdayCount = await prisma.workoutClient.count({
         where: {
           client: { parentUserId: id },
@@ -403,20 +429,14 @@ const getTrainerDashboardStats = async (req, res) => {
       });
       growthWorkouts = workoutsTodayCount - workoutsYesterdayCount;
 
-      // 3.2. Growth Clientes (Requer createdAt/updatedAt no User)
-      // Se o teu Schema não tiver createdAt, isto vai falhar, mas o catch apanha
       const newClientsWeek = await prisma.user.count({
         where: { parentUserId: id, created_at: { gte: oneWeekAgo } }
       });
       const deletedClientsWeek = await prisma.user.count({
-        where: {
-  parentUserId: id,
-  created_at: { gte: oneWeekAgo }
-}
+        where: { parentUserId: id, created_at: { gte: oneWeekAgo } }
       });
       growthActive = newClientsWeek - deletedClientsWeek;
 
-      // 3.3. Growth Rate (Semana vs Semana Anterior)
       const getRate = async (start, end) => {
         const t = await prisma.workoutClient.count({ where: { client: { parentUserId: id }, date: { gte: start, lt: end } } });
         const c = await prisma.workoutClient.count({ where: { client: { parentUserId: id }, status: 'WORKOUT_STATUS_2', date: { gte: start, lt: end } } });
@@ -428,15 +448,13 @@ const getTrainerDashboardStats = async (req, res) => {
       growthRate = Math.round(rateThisWeek - rateLastWeek);
 
     } catch (growthError) {
-      console.warn('Aviso: Não foi possível calcular o crescimento (verifique se tem createdAt/updatedAt no Schema).', growthError.message);
+      console.warn('Aviso: Não foi possível calcular o crescimento.', growthError.message);
     }
 
-    // --- 4. RESPOSTA FINAL ---
     return res.status(200).json({
       activeClients: activeClientsCount,
       workoutsToday: workoutsTodayCount,
       completionRate: overallRate,
-      
       growthActive,
       growthWorkouts,
       growthRate
@@ -459,7 +477,6 @@ const getTrainerSessions = async (req, res) => {
   try {
     const id = parseInt(trainerId);
     
-    // --- Lógica de Datas ---
     let startDate = new Date();
     let endDate = null;
 
@@ -476,7 +493,6 @@ const getTrainerSessions = async (req, res) => {
         startDate = new Date();
     }
     
-    // --- Construção da Query Dinâmica ---
     const whereClause = {
         workout: { trainerId: id },
         date: { gte: startDate }
@@ -486,7 +502,6 @@ const getTrainerSessions = async (req, res) => {
         whereClause.date.lte = endDate;
     }
     
-    // --- Query ---
     const sessions = await prisma.workoutClient.findMany({
       where: whereClause,
       include: {
@@ -502,7 +517,6 @@ const getTrainerSessions = async (req, res) => {
       }
     });
 
-    // --- Formatting ---
     const formattedSessions = sessions.map(session => ({
       id: session.workoutId + '-' + session.clientId + '-' + session.date.toISOString(),
       client_name: session.client.name,
@@ -522,6 +536,37 @@ const getTrainerSessions = async (req, res) => {
   }
 };
 
+const completeUserRegistration = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email obrigatório para gerar o token.' });
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { email: email } });
+    
+    if (!user) {
+      return res.status(404).json({ error: 'Utilizador não encontrado.' });
+    }
+
+    const accessToken = authenticateUtil.generateAccessToken({
+      id: user.id,
+      name: user.name,
+      isAdmin: user.userType === 'USER_TYPE_0' || user.userType === 'USER_TYPE_1'
+    });
+
+    return res.status(200).json({ 
+      message: 'Registo completo',
+      token: accessToken 
+    });
+
+  } catch (err) {
+    console.error('Erro ao gerar token de conclusão:', err);
+    return res.status(500).json({ error: 'Erro ao gerar token.' });
+  }
+};
+
 module.exports = {
   createUser,
   updateUser,
@@ -529,6 +574,8 @@ module.exports = {
   getUserById,
   deleteUserById,
   reactivateUserById,
+  hardDeleteUser,
   getTrainerDashboardStats,
-  getTrainerSessions
+  getTrainerSessions,
+  completeUserRegistration
 };

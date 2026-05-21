@@ -1,5 +1,7 @@
 const prisma = require('../prisma');
 const { Prisma } = require('@prisma/client');
+const fs = require('fs');
+const path = require('path');
 
 exports.createExercise = async (req, res) => {
   const { name, sets, repetitions, duration, rest_seconds, demonstration_url } = req.body;
@@ -22,14 +24,35 @@ exports.createExercise = async (req, res) => {
       });
     }
 
+    // --- LÓGICA DE PROCESSAMENTO DE IMAGEM ---
+    let finalImageUrl = demonstration_url;
+
+    if (demonstration_url && demonstration_url.startsWith('data:image')) {
+      const mimeType = demonstration_url.match(/data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/);
+      const extension = mimeType[1].split('/')[1];
+      const base64Data = demonstration_url.replace(/^data:image\/\w+;base64,/, "");
+      
+      // Criar um nome único para o ficheiro
+      const fileName = `exercise-${Date.now()}.${extension}`;
+      // Caminho absoluto para guardar o ficheiro
+      const filePath = path.join(__dirname, '../../uploads/exercises', fileName);
+
+      // Guardar no disco
+      fs.writeFileSync(filePath, base64Data, 'base64');
+
+      // URL que será guardada na BD
+      const serverUrl = process.env.BASE_URL || 'http://localhost:3001';
+      finalImageUrl = `${serverUrl}/uploads/exercises/${fileName}`;
+    }
+
     const newExercise = await prisma.exercise.create({
       data: {
         name: trimmedName,
-        sets: parseInt(sets),
-        repetitions: parseInt(repetitions),
-        duration: parseInt(duration),
-        restSeconds: parseInt(rest_seconds),
-        demonstrationUrl: demonstration_url
+        sets: parseInt(sets) || 0,
+        repetitions: parseInt(repetitions) || 0,
+        duration: parseInt(duration) || 0,
+        restSeconds: parseInt(rest_seconds) || 0,
+        demonstrationUrl: finalImageUrl
       }
     });
 
@@ -78,6 +101,21 @@ exports.updateExercise = async (req, res) => {
   const { name, sets, repetitions, duration, rest_seconds, demonstration_url } = req.body;
   
   try {
+    let finalImageUrl = demonstration_url;
+
+    // Lógica de upload também no Update
+    if (demonstration_url && demonstration_url.startsWith('data:image')) {
+      const mimeType = demonstration_url.match(/data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,/);
+      const extension = mimeType[1].split('/')[1];
+      const base64Data = demonstration_url.replace(/^data:image\/\w+;base64,/, "");
+      const fileName = `exercise-${Date.now()}.${extension}`;
+      const filePath = path.join(__dirname, '../../uploads/exercises', fileName);
+
+      fs.writeFileSync(filePath, base64Data, 'base64');
+      const serverUrl = process.env.BASE_URL || 'http://localhost:3001';
+      finalImageUrl = `${serverUrl}/uploads/exercises/${fileName}`;
+    }
+
     const updatedExercise = await prisma.exercise.update({
       where: { id: parseInt(req.params.id) },
       data: {
@@ -86,7 +124,7 @@ exports.updateExercise = async (req, res) => {
         repetitions: parseInt(repetitions),
         duration: parseInt(duration),
         restSeconds: parseInt(rest_seconds),
-        demonstrationUrl: demonstration_url
+        demonstrationUrl: finalImageUrl
       }
     });
     

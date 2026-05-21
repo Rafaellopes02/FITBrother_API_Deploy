@@ -195,9 +195,8 @@ const getAllowedDaysByClient = async (req, res) => {
     });
 
     // 3. Mapeia o Enum (WEEK_DAY_0) de volta para número (0-6) para o frontend
-    // Baseado no seu dayMap: WEEK_DAY_0 = 0 (Segunda ou Domingo dependendo da sua regra)
     const allowedDays = slots.map(slot => {
-      const match = slot.weekDay.match(/\d+$/); // Extrai o número do final da string WEEK_DAY_X
+      const match = slot.weekDay.match(/\d+$/);
       return match ? parseInt(match[0]) : null;
     }).filter((value, index, self) => value !== null && self.indexOf(value) === index);
 

@@ -97,7 +97,6 @@ const verifyLogin = async (req, res) => {
       };
     }
 
-    // Resposta final
     return res.status(200).json({
       id: user.id,
       name: user.name,

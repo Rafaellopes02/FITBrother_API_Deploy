@@ -1,29 +1,21 @@
 const prisma = require('../prisma');
 const { Prisma } = require('@prisma/client');
 
-// ==========================================
-// 1. FUNÇÕES AUXILIARES DE MAPEAMENTO (ESSENCIAIS)
-// ==========================================
-
-// Converte um valor simples (ex: 1) para o Enum do Prisma (ex: "GENDER_1")
-// Se o valor for null/undefined, retorna undefined (ignora).
 const mapToEnum = (prefix, value) => {
   if (value === null || value === undefined || value === "") return undefined;
   return `${prefix}_${value}`;
 };
 
-// Converte um Array de números (ex: [1, 2]) para Array de Enums (ex: ["GOAL_1", "GOAL_2"])
 const mapToEnumArray = (prefix, values) => {
   if (!values || !Array.isArray(values) || values.length === 0) return [];
   return values.map(v => `${prefix}_${v}`);
 };
 
-// ==========================================
-// 2. ANAMNESE COMPLETA
-// ==========================================
+// ANAMNESE COMPLETA
 const createCompleteAnamnesis = async (req, res) => {
+
   const {
-    client_id, trainer_id, parent_user_id,
+    client_id, trainer_id, parent_user_id, // Vamos receber mas IGNORAR os IDs do treinador que vêm do frontend
     full_name, age, gender, weight_kg, height_cm, occupation, occupation_other,
     medical_conditions, medical_condition_other, spine_joint_injuries, injury_description,
     regular_medication, medication_description, allergies, allergy_description, last_medical_exam,
@@ -37,28 +29,41 @@ const createCompleteAnamnesis = async (req, res) => {
     return res.status(400).json({ error: 'Campos obrigatórios (client_id, full_name) em falta.' });
   }
 
-  const finalTrainerId = trainer_id ? parseInt(trainer_id) : (parent_user_id ? parseInt(parent_user_id) : null);
-  
+  // --- 🛡️ MODO 100% BLINDADO (À PROVA DE CACHE DO FRONTEND) 🛡️ ---
+  // Ignoramos qualquer ID de treinador que venha do frontend.
+  // Vamos buscar SEMPRE à fonte da verdade: a Base de Dados!
+  let finalTrainerId = null;
+
+  try {
+    const clientInfo = await prisma.user.findUnique({
+      where: { id: parseInt(client_id) },
+      select: { parentUserId: true }
+    });
+    
+    if (clientInfo && clientInfo.parentUserId) {
+      finalTrainerId = clientInfo.parentUserId;
+    } else {
+      return res.status(400).json({ error: 'O aluno não tem um Personal Trainer associado na base de dados.' });
+    }
+  } catch (dbErr) {
+    return res.status(500).json({ error: 'Erro ao tentar localizar o treinador do aluno.' });
+  }
+
   try {
     const prismaData = {
       // --- Pessoais ---
       clientId: parseInt(client_id),
-      trainerId: finalTrainerId,
+      trainerId: finalTrainerId, // <--- ID 100% Garantido e Válido!
       fullName: full_name,
       age: parseInt(age),
       
-      // Mapeia 1 -> "GENDER_1", 2 -> "GENDER_2"
       gender: mapToEnum('GENDER', gender), 
-      
       weightKg: parseFloat(weight_kg),
       heightCm: parseFloat(height_cm),
-      
-      // Mapeia 1 -> "OCCUPATION_TYPE_1"
       occupation: mapToEnum('OCCUPATION_TYPE', occupation),
       occupationOther: occupation_other,
 
       // --- Saúde ---
-      // Mapeia [1, 2] -> ["MEDICAL_CONDITION_1", "MEDICAL_CONDITION_2"]
       medicalConditions: mapToEnumArray('MEDICAL_CONDITION', medical_conditions), 
       medicalConditionOther: medical_condition_other,
       spineJointInjuries: spine_joint_injuries,
@@ -100,23 +105,18 @@ const createCompleteAnamnesis = async (req, res) => {
       select: { id: true }
     });
     
-    return res.status(201).json({ message: 'Anamnese criada!', anamnesis_id: newAnamnesis.id });
+    return res.status(201).json({ message: 'Anamnese criada com sucesso!', anamnesis_id: newAnamnesis.id });
   
   } catch (err) {
     console.error('ERRO PRISMA:', err.message);
-    
     if (err.code === 'P2002') {
       return res.status(400).json({ error: 'Dados duplicados.', details: err.meta });
     }
-    
     return res.status(500).json({ error: 'Erro ao gravar anamnese.', details: err.message });
   }
 };
 
-// ==========================================
 // FUNÇÕES INDIVIDUAIS
-// ==========================================
-
 const createAnamnesisPersonal = async (req, res) => {
   const { client_id, trainer_id, full_name, age, gender, weight_kg, height_cm, occupation, occupation_other } = req.body;
   if (!client_id || !trainer_id || !full_name) return res.status(400).json({ error: 'Faltam campos.' });
@@ -216,7 +216,7 @@ const deleteAnamnesisById = async (req, res) => {
 const getLastAnamnesisByClientId = async (req, res) => {
   const { client_id } = req.params;
   try {
-    const anamnesis = await prisma.anamnesis.findFirst({ where: { clientId: parseInt(client_id) }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+    const anamnesis = await prisma.anamnesis.findFirst({ where: { clientId: parseInt(client_id) }, orderBy: { createdAt: 'desc' }});
     if (!anamnesis) return res.status(404).json({ error: 'Nenhuma' });
     return res.status(200).json({ anamnesis });
   } catch (e) { return res.status(500).json({ error: e.message }); }
