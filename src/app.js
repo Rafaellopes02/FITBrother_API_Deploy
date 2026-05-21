@@ -13,7 +13,7 @@ const workoutRoutes = require('./routes/workoutRoutes');
 const exercisesRoutes = require('./routes/exercisesRoutes');
 const supportRoutes = require('./routes/supportRoutes');
 const favoriteRoutes = require('./routes/favoritesRoutes');
-const trainAdjustmentRoutes = require('./routes/trainAdjustmentRoutes');
+const trainAdjustmentRoutes = require('./routes/Trainadjustmentroutes');
 const physicalAssessmentRoutes = require('./routes/physicalAssessmentRoutes');
 
 const prisma = require('./prisma');
