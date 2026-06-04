@@ -19,15 +19,21 @@ const physicalAssessmentRoutes = require('./routes/physicalAssessmentRoutes');
 const prisma = require('./prisma');
 const app = express();
 
+// --- DEFINIÇÃO DE ORIGENS PERMITIDAS (A MAGIA DO CORS RESOLVIDA) ---
+const allowedOrigins = [
+  'http://localhost:8100', 
+  'https://fitbrother-delta.vercel.app' // A morada do teu Frontend no Vercel
+];
+
 // --- MIDDLEWARES ---
-app.use(cors());
+// Removemos o app.use(cors()) vazio porque vamos configurá-lo bem a seguir
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use('/uploads', express.static('uploads'));
 
-// 1. CONFIGURAÇÃO CORS
+// 1. CONFIGURAÇÃO CORS (Express)
 app.use(cors({
-  origin: true, 
+  origin: allowedOrigins, 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true
@@ -92,7 +98,7 @@ app.use('/api', physicalAssessmentRoutes);
 app.get('/', (req, res) => res.send('API FITBrother a funcionar! 🚀'));
 
 // 5. ROTA DE HISTÓRICO DE CHAT
-app.get('/chat/history/:user1/:user2', async (req, res) => {
+app.get('/api/chat/history/:user1/:user2', async (req, res) => { // Adicionei /api aqui para bater certo com as tuas rotas frontend
   const { user1, user2 } = req.params;
   
   if (!user1 || !user2) return res.status(400).json({ error: "IDs em falta" });
@@ -119,7 +125,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:8100", 
+    origin: allowedOrigins, // <--- CULPADO RESOLVIDO! Agora aceita o Vercel!
     methods: ["GET", "POST"],
     credentials: true
   },
