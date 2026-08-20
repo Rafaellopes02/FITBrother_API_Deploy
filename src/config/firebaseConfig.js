@@ -1,18 +1,26 @@
 const admin = require('firebase-admin');
-const path = require('path');
+
+// 1. O Render cria a variável de ambiente 'RENDER' automaticamente.
+// Se estiver no Render, vai buscar ao cofre secreto. 
+// Se for no teu Mac, assume que o ficheiro está na mesma pasta.
+const serviceAccountPath = process.env.RENDER 
+  ? '/etc/secrets/firebase-service-account.json' 
+  : './firebase-service-account.json';
 
 try {
-  // Vai buscar o ficheiro json que guardaste nessa pasta
-  const serviceAccountPath = path.join(__dirname, 'firebase-service-account.json');
+  // 2. Carregar o ficheiro JSON
   const serviceAccount = require(serviceAccountPath);
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
-
-  console.log('🔥 [Firebase] SDK inicializado com sucesso de forma segura.');
+  // 3. Inicializar o Firebase (verificando se já não foi inicializado antes)
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('✅ [Firebase] SDK inicializado com sucesso!');
+  }
 } catch (error) {
-  console.error('❌ [Firebase] Erro ao inicializar o SDK:', error.message);
+  console.error(`❌ [Firebase] Erro ao carregar as credenciais no caminho: ${serviceAccountPath}`);
+  console.error(error.message);
 }
 
 module.exports = admin;
