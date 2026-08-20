@@ -22,21 +22,14 @@ require('./utils/cronTasks');
 const prisma = require('./prisma');
 const app = express();
 
-// --- MIDDLEWARES ---
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use('/uploads', express.static('uploads'));
-
-// 1. CONFIGURAÇÃO CORS
+// 1. CONFIGURAÇÃO CORS E MIDDLEWARES
 app.use(cors({
-  origin: true, 
+  origin: true, // Permite qualquer origem (Localhost e Vercel)
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true
 }));
 
-// 2. MIDDLEWARES GERAIS
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static('uploads'));
@@ -45,7 +38,7 @@ BigInt.prototype.toJSON = function() {
   return this.toString(); 
 };
 
-// 3. CONFIGURAÇÃO SWAGGER
+// 2. CONFIGURAÇÃO SWAGGER
 const options = {
   definition: {
     openapi: '3.0.0',
@@ -80,7 +73,7 @@ const options = {
 const swaggerSpec = swaggerJsdoc(options);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// 4. ROTAS DA API
+// 3. ROTAS DA API
 app.use('/api', userRoutes);
 app.use('/api', verifyRoutes);
 app.use('/api', scheduleRoutes);
@@ -94,7 +87,7 @@ app.use('/api', physicalAssessmentRoutes);
 
 app.get('/', (req, res) => res.send('API FITBrother a funcionar! 🚀'));
 
-// 5. ROTA DE HISTÓRICO DE CHAT
+// 4. ROTA DE HISTÓRICO DE CHAT
 app.get('/chat/history/:user1/:user2', async (req, res) => {
   const { user1, user2 } = req.params;
   
@@ -117,12 +110,15 @@ app.get('/chat/history/:user1/:user2', async (req, res) => {
   }
 });
 
-// 6. SERVIDOR HTTP E SOCKET.IO
+// 5. SERVIDOR HTTP E SOCKET.IO
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:8100", 
+    origin: (origin, callback) => {
+      // Aceita localhost E o site de produção (Vercel)
+      callback(null, true);
+    },
     methods: ["GET", "POST"],
     credentials: true
   },
@@ -141,7 +137,6 @@ io.on('connection', (socket) => {
     io.emit('user_status', { userId: userId, online: true });
   });
 
-  // DUPLICAÇÃO REMOVIDA: Apenas uma escuta limpa do evento de mensagens
   socket.on('send_message', async (data) => {
     try {
       if (!data.senderId || !data.receiverId || !data.content) {
@@ -151,7 +146,7 @@ io.on('connection', (socket) => {
       const senderInt = parseInt(data.senderId);
       const receiverInt = parseInt(data.receiverId);
 
-      // 1. Grava a mensagem no chat normalmente
+      // 1. Grava a mensagem no chat
       const savedMsg = await prisma.message.create({
         data: {
           content: data.content,
@@ -164,18 +159,18 @@ io.on('connection', (socket) => {
       io.to(`user_${receiverInt}`).emit('receive_message', savedMsg);
       io.to(`user_${senderInt}`).emit('receive_message', savedMsg);
 
-      // 3. GATILHO IMEDIATO DE NOTIFICAÇÃO
+      // 3. Notificação Push
       const senderUser = await prisma.user.findUnique({
         where: { id: senderInt },
         select: { name: true }
       });
 
       await sendNotification(
-  receiverInt, 
-  `Nova mensagem de ${senderUser?.name || 'Treinador'} 💬`, 
-  data.content.length > 60 ? data.content.substring(0, 60) + '...' : data.content, 
-  'MESSAGE' // ← MUDA DE '2' PARA 'MESSAGE'
-);
+        receiverInt, 
+        `Nova mensagem de ${senderUser?.name || 'Treinador'} 💬`, 
+        data.content.length > 60 ? data.content.substring(0, 60) + '...' : data.content, 
+        'MESSAGE'
+      );
 
     } catch (e) {
       console.error("❌ ERRO AO SALVAR NA BD OU NOTIFICAR:", e.message);
@@ -196,21 +191,22 @@ io.on('connection', (socket) => {
 
 });
 
-// 7. ARRANCAR O SERVIDOR
+// 6. ARRANCAR O SERVIDOR (Preparado para o Render)
 const PORT = process.env.PORT || 3001;
 
 async function startServer() {
   try {
     await prisma.$connect();
-    console.log('Ligação à BD (Prisma) estabelecida.');
+    console.log('✅ Ligação à BD (Prisma) estabelecida.');
 
+    // O '0.0.0.0' é fundamental para o Render aceitar a ligação!
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Servidor a correr na porta ${PORT}`);
       console.log(`📄 Swagger: http://localhost:${PORT}/api-docs`);
     });
 
   } catch (error) {
-    console.error('Erro fatal ao ligar à Base de Dados:', error);
+    console.error('❌ Erro fatal ao ligar à Base de Dados:', error);
     process.exit(1);
   }
 }
