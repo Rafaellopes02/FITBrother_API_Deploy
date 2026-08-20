@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { hashPassword } = require('../utils/passwordUtils');
 const { hashRegisterCode } = require('../utils/registerCodeUtils');
 const authenticateUtil = require('../utils/authenticateUtils.js');
+const { sendNotification } = require('../utils/notificationUtils');
 
 const userTypeMap = {
   '0': 'USER_TYPE_0',
@@ -57,7 +58,7 @@ const createUser = async (req, res) => {
     const plain_registration_code = crypto.randomBytes(3).toString('hex').toUpperCase();
     const registration_code_hash = await hashRegisterCode(plain_registration_code);
 
-    let finalParentId = null;
+   
     if (prismaUserType === 'USER_TYPE_3' && parent_user_id) {
         finalParentId = parseInt(parent_user_id);
     }
@@ -66,7 +67,7 @@ const createUser = async (req, res) => {
 
     const newUser = await prisma.user.create({
       data: {
-        registrationCode: registration_code_hash,
+        registrationCode: plain_registration_code, 
         registrationStatus: false,
         name: name,
         email: email,
@@ -132,6 +133,8 @@ const getUsersByParentId = async (req, res) => {
         phone: true,
         isDeleted: true,
         profile_image: true,
+       registrationCode: true,   
+        registrationStatus: true,
         
         clientAnamnesis: { 
           take: 1,
@@ -205,13 +208,30 @@ const updateUser = async (req, res) => {
       ...(password_hash && { passwordHash: password_hash }),
     };
 
+    // 1. Atualiza o utilizador na Base de Dados
     const updatedUser = await prisma.user.update({
       where: { id: parseInt(id) },
       data: dataToUpdate,
     });
 
+    // ─── GATILHO IMEDIATO: NOVO ALUNO ATIVOU A CONTA ─────────────────────────
+    // Só dispara se o registration_status enviado for true E o utilizador for um Aluno com PT associado
+    if (registration_status === true && updatedUser.userType === 'USER_TYPE_3' && updatedUser.parentUserId) {
+      try {
+        await sendNotification(
+          parseInt(updatedUser.parentUserId), // O PT recebe o alerta
+          'Novo Aluno Vinculado! 👤',
+          `O aluno ${updatedUser.name} concluiu o registo e já está ativo na tua lista de acompanhamento.`,
+          'SYSTEM' // Tipo SYSTEM
+        );
+      } catch (notifErr) {
+        console.error('⚠️ Falha ao enviar notificação de ativação de aluno:', notifErr.message);
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const successMessage = password_hash
-      ? 'Utilizador e password atualizados com sucesso'
+      ? 'Utilizador e password updated com sucesso'
       : 'Utilizador atualizado com sucesso';
 
     return res.status(200).json({
@@ -567,6 +587,105 @@ const completeUserRegistration = async (req, res) => {
   }
 };
 
+// Guardar ou atualizar o Token FCM do telemóvel do utilizador
+const saveDeviceToken = async (req, res) => {
+  const { userId, token } = req.body;
+
+  if (!userId || !token) {
+    return res.status(400).json({ message: 'userId E token são obrigatórios.' });
+  }
+
+  try {
+    // O upsert garante que se o token já existir, ele só atualiza o dono. 
+    // Se não existir, cria um novo registo. Evita duplicados!
+    const deviceToken = await prisma.deviceToken.upsert({
+      where: { token: token },
+      update: { userId: parseInt(userId) },
+      create: {
+        userId: parseInt(userId),
+        token: token
+      }
+    });
+
+    return res.status(200).json({
+      message: 'Token de dispositivo registado com sucesso!',
+      deviceToken
+    });
+
+  } catch (err) {
+    console.error('Erro ao guardar token do dispositivo:', err);
+    return res.status(500).json({ message: 'Erro interno ao guardar o token.' });
+  }
+};
+
+// Obter todas as notificações de um utilizador (da mais recente para a mais antiga)
+const getUserNotifications = async (req, res) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'O ID do utilizador é obrigatório.' });
+  }
+
+  try {
+    const notifications = await prisma.notification.findMany({
+      where: { userId: parseInt(userId) },
+      orderBy: { createdAt: 'desc' } // Mostra sempre as mais recentes primeiro
+    });
+
+    return res.status(200).json(notifications);
+  } catch (err) {
+    console.error('Erro ao buscar notificações:', err);
+    return res.status(500).json({ message: 'Erro interno ao buscar notificações.' });
+  }
+};
+
+// Marcar todas as notificações de um utilizador como lidas (limpar a bolinha vermelha)
+const markNotificationsAsRead = async (req, res) => {
+  const { userId } = req.params;
+
+  if (!userId) {
+    return res.status(400).json({ message: 'O ID do utilizador é obrigatório.' });
+  }
+
+  try {
+    // Corrigido para usar o campo 'read' detetado pelo Prisma!
+    await prisma.notification.updateMany({
+      where: { 
+        userId: parseInt(userId),
+        read: false // Apanha apenas as notificações não lidas
+      },
+      data: {
+        read: true // Passa-as para lidas
+      }
+    });
+
+    return res.status(200).json({ message: 'Notificações marcadas como lidas.' });
+  } catch (err) {
+    console.error('Erro ao atualizar notificações:', err);
+    return res.status(500).json({ message: 'Erro interno ao atualizar notificações.' });
+  }
+};
+
+const deleteNotificationById = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await prisma.notification.delete({
+      where: { id: parseInt(id) }
+    });
+
+    return res.status(200).json({ message: 'Notificação eliminada com sucesso.' });
+  } catch (error) {
+    console.error('Erro ao eliminar notificação:', error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Notificação não encontrada.' });
+    }
+    return res.status(500).json({ error: 'Erro interno ao eliminar notificação.' });
+  }
+};
+
+
+
 module.exports = {
   createUser,
   updateUser,
@@ -577,5 +696,9 @@ module.exports = {
   hardDeleteUser,
   getTrainerDashboardStats,
   getTrainerSessions,
-  completeUserRegistration
+  completeUserRegistration,
+  saveDeviceToken,
+  getUserNotifications,
+  markNotificationsAsRead,
+  deleteNotificationById
 };

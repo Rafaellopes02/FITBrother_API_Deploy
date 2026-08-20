@@ -1,18 +1,13 @@
-require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const secret = process.env.JWT_SECRET;
-console.log("JWT_SECRET:", secret);
 
-exports.generateAccessToken = information => jwt.sign(information, secret, { expiresIn: '7d' });
+exports.generateAccessToken = information => 
+  jwt.sign(information, process.env.JWT_SECRET, { expiresIn: '7d' });
 
 exports.certifyAccessToken = token => {
-    return new Promise((resolve, reject) => {
-        jwt.verify(token, secret, (err, decoded) => {
-            if (err) {
-                reject(err);
-            } else {
-                resolve(decoded);
-            }
-        });
+  return new Promise((resolve, reject) => {
+    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) reject(err);
+      else resolve(decoded);
     });
-}
+  });
+};

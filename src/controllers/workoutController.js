@@ -1,5 +1,6 @@
 const prisma = require('../prisma');
 const crypto = require('crypto');
+const { sendNotification } = require('../utils/notificationUtils');
 
 const workoutStatusReverseMap = {
   'WORKOUT_STATUS_0': '0',
@@ -36,6 +37,7 @@ const parseTime = (timeString) => {
 };
 
 
+// 1. CORREÇÃO: createWorkout limpo (sem variáveis fantasma que crasham o servidor)
 const createWorkout = async (req, res) => {
   const { trainer_id, name, description } = req.body;
   try {
@@ -46,6 +48,7 @@ const createWorkout = async (req, res) => {
         description: description,
       }
     });
+    
     res.status(201).json({
       ...newWorkout,
       trainer_id: newWorkout.trainerId,
@@ -56,6 +59,45 @@ const createWorkout = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erro ao criar treino' });
+  }
+};
+
+// ... (getAllWorkouts, getWorkoutById, updateWorkout, deleteWorkout mantêm-se iguais)
+
+// 2. CORREÇÃO: O gatilho correto vive aqui quando o aluno é associado à data!
+const addClientToWorkout = async (req, res) => {
+  const { id } = req.params; // ID do Treino
+  const { client_id, date } = req.body;
+  if (!client_id) return res.status(400).json({ error: 'client_id é obrigatório' });
+
+  try {
+    // Criamos o registo e incluímos a relação com o treino para saber o nome dele
+    const workoutClientRelation = await prisma.workoutClient.create({
+      data: {
+        workoutId: parseInt(id),
+        clientId: parseInt(client_id),
+        date: parseDate(date),
+      },
+      include: {
+        workout: true // Permite aceder a workoutClientRelation.workout.name
+      }
+    });
+
+    // ─── GATILHO IMEDIATO DE NOTIFICAÇÃO ─────────────────────────────────────
+    // O aluno correto recebe o aviso de que tem um treino agendado nesta data
+    await sendNotification(
+      parseInt(client_id),
+      'Novo Treino Atribuído! 🏋️‍♂️',
+      `O teu PT agendou-te o plano: "${workoutClientRelation.workout.name}" para o dia ${date}. Prepara as sapatilhas!`,
+      'WORKOUT' // Mapeia perfeitamente para o enum do teu Prisma
+    );
+    // ─────────────────────────────────────────────────────────────────────────
+
+    res.status(201).json({ message: 'Cliente associado ao treino e notificado com sucesso' });
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2002') return res.status(409).json({ error: 'Conflito: cliente já associado nesta data.' });
+    res.status(500).json({ error: 'Erro ao adicionar cliente' });
   }
 };
 
@@ -142,48 +184,73 @@ const deleteWorkout = async (req, res) => {
   }
 };
 
-const addClientToWorkout = async (req, res) => {
-  const { id } = req.params;
-  const { client_id, date } = req.body;
-  if (!client_id) return res.status(400).json({ error: 'client_id é obrigatório' });
-
-  try {
-    await prisma.workoutClient.create({
-      data: {
-        workoutId: parseInt(id),
-        clientId: parseInt(client_id),
-        date: parseDate(date),
-      }
-    });
-    res.status(201).json({ message: 'Cliente associado ao treino' });
-  } catch (err) {
-    console.error(err);
-    if (err.code === 'P2002') return res.status(409).json({ error: 'Conflito: cliente já associado nesta data.' });
-    res.status(500).json({ error: 'Erro ao adicionar cliente' });
-  }
-};
 
 const updateWorkoutClient = async (req, res) => {
-  const { id, clientId, date } = req.params;
+  const { id, clientId, date } = req.params; // id = workoutId
   const { start_time, end_time, status } = req.body;
 
   try {
     const dataToUpdate = {};
     if (start_time) dataToUpdate.startTime = parseTime(start_time); 
     if (end_time) dataToUpdate.endTime = parseTime(end_time);
-    if (status) dataToUpdate.status = workoutStatusMap[status] || status;
+    
+    if (status !== undefined && status !== null) {
+      dataToUpdate.status = workoutStatusMap[status.toString()] || status;
+    }
 
+    // Intervalo de datas seguro (00:00:00 às 23:59:59) para evitar problemas de fuso horário
+    const inicioDia = new Date(date);
+    inicioDia.setHours(0, 0, 0, 0);
+
+    const fimDia = new Date(date);
+    fimDia.setHours(23, 59, 59, 999);
+
+    // 1. Atualiza o estado na Base de Dados
     const updateResult = await prisma.workoutClient.updateMany({
       where: {
         workoutId: parseInt(id),
         clientId: parseInt(clientId),
-        date: new Date(date) 
+        date: {
+          gte: inicioDia,
+          lte: fimDia
+        }
       },
       data: dataToUpdate
     });
-    res.json({ message: 'Atualizado com sucesso' });
+
+    // ─── GATILHO IMEDIATO DE NOTIFICAÇÃO ─────────────────────────────────────
+    // Mudámos aqui: Como o '1' mapeia para 'WORKOUT_STATUS_1', disparamos o alerta aqui!
+    if (dataToUpdate.status === 'WORKOUT_STATUS_1') {
+      
+      const info = await prisma.workoutClient.findFirst({
+        where: {
+          workoutId: parseInt(id),
+          clientId: parseInt(clientId),
+          date: { gte: inicioDia, lte: fimDia }
+        },
+        include: { workout: true }
+      });
+
+      if (info && info.workout?.trainerId) {
+        // Vai buscar o nome do aluno à tabela User
+        const aluno = await prisma.user.findUnique({
+          where: { id: parseInt(clientId) },
+          select: { name: true }
+        });
+
+        await sendNotification(
+          info.workout.trainerId, // O PT recebe a notificação
+          'Treino Concluído! ✅',
+          `O teu aluno ${aluno?.name || 'Acompanhado'} concluiu o treino "${info.workout.name}".`,
+          'WORKOUT'
+        );
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    res.json({ message: 'Atualizado com sucesso', rowsUpdated: updateResult.count });
   } catch (err) {
-    console.error(err);
+    console.error('❌ Erro no updateWorkoutClient:', err);
     res.status(500).json({ error: 'Erro ao atualizar' });
   }
 };

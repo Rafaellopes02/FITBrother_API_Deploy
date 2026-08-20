@@ -8,7 +8,7 @@ const {
   deleteAdjustment,
   assignAdjustment,
   getTrainAdjustmentById
-} = require('../controllers/Trainadjustmentcontroller');
+} = require('../controllers/trainAdjustmentController');
 const { certifyAccessToken } = require('../utils/authenticateUtils');
 
 const authenticate = async (req, res, next) => {

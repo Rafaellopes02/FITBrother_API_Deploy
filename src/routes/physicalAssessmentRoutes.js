@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { createPhysicalAssessment, getAssessmentsByClient, getAssessmentById, updatePhysicalAssessment } = require('../controllers/physicalAssessmentController');
 const { certifyAccessToken } = require('../utils/authenticateUtils');
+const { sendNotification } = require('../utils/notificationUtils');
 
 // O teu middleware de segurança
 const authenticate = async (req, res, next) => {
@@ -17,6 +18,7 @@ const authenticate = async (req, res, next) => {
     req.user = decoded;
     next();
   } catch (err) {
+    console.log('Erro JWT:', err.name, '-', err.message); // <- adiciona esta linha
     return res.status(403).json({ error: 'Token inválido ou expirado.' });
   }
 };

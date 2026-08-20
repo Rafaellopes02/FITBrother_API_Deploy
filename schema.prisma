@@ -116,6 +116,9 @@ model User {
   clientAssessments   PhysicalAssessment[] @relation("ClientAssessments")
   trainerAssessments  PhysicalAssessment[] @relation("TrainerAssessments")
 
+  deviceTokens        DeviceToken[]
+  notifications       Notification[]
+
   @@map("users")
 }
 
@@ -276,7 +279,40 @@ model PhysicalAssessment {
   updatedAt       DateTime @updatedAt
 }
 
+// ─── NOVO MODELO: TOKENS DE DISPOSITIVOS PARA PUSH ───────────────────────────
+model DeviceToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  token     String   @unique @db.Text // O token FCM gerado pelo Capacitor
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("device_tokens")
+}
+
+// ─── NOVO MODELO: HISTÓRICO DE NOTIFICAÇÕES (CENTRAL IN-APP) ─────────────────
+model Notification {
+  id        Int               @id @default(autoincrement())
+  userId    Int               @map("user_id")
+  title     String            @db.VarChar(255)
+  body      String            @db.Text
+  type      notification_enum @default(SYSTEM)
+  read      Boolean           @default(false)
+  createdAt DateTime          @default(now()) @map("created_at")
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
 // --- ENUMS ---
+
+enum notification_enum {
+  WORKOUT    @map("0") // Quando o PT atribui ou altera um treino
+  ASSESSMENT @map("1") // Quando há uma nova avaliação física
+  MESSAGE    @map("2") // Mensagens do chat
+  SYSTEM     @map("3") // Alertas gerais do sistema
+}
+
 
 enum activity_level_enum {
   ACTIVITY_LEVEL_0 @map("0")

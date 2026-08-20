@@ -8,3 +8,5 @@ node_modules/
 
 # Uploads locais (já não são precisos com Cloudinary)
 uploads/
+
+echo "src/config/firebase-service-account.json" >> .gitignore

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { sendNotification } = require('../utils/notificationUtils');
 const { 
   createUser, 
   updateUser, 
@@ -10,7 +11,11 @@ const {
   hardDeleteUser,
   getTrainerDashboardStats,
   getTrainerSessions,
-  completeUserRegistration
+  completeUserRegistration,
+  saveDeviceToken,
+  getUserNotifications,      
+  markNotificationsAsRead,
+  deleteNotificationById
 } = require('../controllers/userController');
 
 const prisma = require('../prisma');
@@ -159,13 +164,31 @@ router.get('/users/inbox/:parent_user_id', async (req, res) => {
 });
 
 // Rota para Avaliações Físicas
+// Rota para Avaliações Físicas com Gatilho de Notificação Blindado
 router.post('/physical-assessments', async (req, res) => {
   try {
+    // 1. Cria a avaliação física na BD
     const assessment = await prisma.physicalAssessment.create({
       data: req.body
     });
+
+    // 2. GATILHO IMEDIATO (Tenta apanhar o ID enviado ou o gerado pelo Prisma)
+    const alunoId = req.body.client_id || req.body.clientId || assessment.clientId || assessment.client_id;
+
+    if (alunoId) {
+      await sendNotification(
+        parseInt(alunoId), // O ID do aluno correto
+        'Nova Avaliação Física Disponível! 📊', 
+        'O teu treinador acabou de atualizar a tua ficha de avaliação física. Dá uma vista de olhos nos teus resultados!', 
+        'ASSESSMENT' // Tipo 'ASSESSMENT'
+      );
+    } else {
+      console.warn('⚠️ Avaliação criada, mas nenhum client_id foi encontrado no Request Body.');
+    }
+
     res.status(201).json(assessment);
   } catch (err) {
+    console.error('❌ Erro fatal na rota de avaliação física:', err); // Isto vai mostrar o erro exato no teu terminal
     res.status(500).json({ error: err.message });
   }
 });
@@ -179,6 +202,10 @@ router.delete('/users/delete/:id', deleteUserById);
 router.put('/users/reactivate/:id', reactivateUserById);
 router.delete('/users/hard-delete/:id', hardDeleteUser);
 router.get('/dashboard/stats/:trainer_id', getTrainerDashboardStats);
+router.post('/save-device-token', saveDeviceToken);
+router.get('/users/:userId/notifications', getUserNotifications);
+router.patch('/users/:userId/notifications/read', markNotificationsAsRead);
+router.delete('/notifications/:id', deleteNotificationById);
 
 /**
  * @swagger

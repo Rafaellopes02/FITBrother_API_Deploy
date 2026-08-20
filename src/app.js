@@ -1,10 +1,10 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const http = require('http');
 const { Server } = require("socket.io");
-
 const userRoutes = require('./routes/userRoutes');
 const verifyRoutes = require('./routes/verifyRoutes');
 const scheduleRoutes = require('./routes/scheduleRoutes');
@@ -13,27 +13,24 @@ const workoutRoutes = require('./routes/workoutRoutes');
 const exercisesRoutes = require('./routes/exercisesRoutes');
 const supportRoutes = require('./routes/supportRoutes');
 const favoriteRoutes = require('./routes/favoritesRoutes');
-const trainAdjustmentRoutes = require('./routes/Trainadjustmentroutes');
+const trainAdjustmentRoutes = require('./routes/trainAdjustmentRoutes');
 const physicalAssessmentRoutes = require('./routes/physicalAssessmentRoutes');
+const { sendNotification } = require('./utils/notificationUtils');
+
+require('./utils/cronTasks'); 
 
 const prisma = require('./prisma');
 const app = express();
 
-// --- DEFINIÇÃO DE ORIGENS PERMITIDAS (A MAGIA DO CORS RESOLVIDA) ---
-const allowedOrigins = [
-  'http://localhost:8100', 
-  'https://fitbrother-delta.vercel.app' // A morada do teu Frontend no Vercel
-];
-
 // --- MIDDLEWARES ---
-// Removemos o app.use(cors()) vazio porque vamos configurá-lo bem a seguir
+app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use('/uploads', express.static('uploads'));
 
-// 1. CONFIGURAÇÃO CORS (Express)
+// 1. CONFIGURAÇÃO CORS
 app.use(cors({
-  origin: allowedOrigins, 
+  origin: true, 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   credentials: true
@@ -98,7 +95,7 @@ app.use('/api', physicalAssessmentRoutes);
 app.get('/', (req, res) => res.send('API FITBrother a funcionar! 🚀'));
 
 // 5. ROTA DE HISTÓRICO DE CHAT
-app.get('/api/chat/history/:user1/:user2', async (req, res) => { // Adicionei /api aqui para bater certo com as tuas rotas frontend
+app.get('/chat/history/:user1/:user2', async (req, res) => {
   const { user1, user2 } = req.params;
   
   if (!user1 || !user2) return res.status(400).json({ error: "IDs em falta" });
@@ -125,7 +122,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins, // <--- CULPADO RESOLVIDO! Agora aceita o Vercel!
+    origin: "http://localhost:8100", 
     methods: ["GET", "POST"],
     credentials: true
   },
@@ -136,6 +133,7 @@ const io = new Server(server, {
 const onlineUsers = new Map(); 
 
 io.on('connection', (socket) => {
+  
   socket.on('join_chat', (userId) => {
     socket.join(`user_${userId}`);
     socket.userId = userId; 
@@ -143,6 +141,7 @@ io.on('connection', (socket) => {
     io.emit('user_status', { userId: userId, online: true });
   });
 
+  // DUPLICAÇÃO REMOVIDA: Apenas uma escuta limpa do evento de mensagens
   socket.on('send_message', async (data) => {
     try {
       if (!data.senderId || !data.receiverId || !data.content) {
@@ -152,6 +151,7 @@ io.on('connection', (socket) => {
       const senderInt = parseInt(data.senderId);
       const receiverInt = parseInt(data.receiverId);
 
+      // 1. Grava a mensagem no chat normalmente
       const savedMsg = await prisma.message.create({
         data: {
           content: data.content,
@@ -159,10 +159,26 @@ io.on('connection', (socket) => {
           receiverId: receiverInt
         }
       });
+
+      // 2. Envia via socket em tempo real
       io.to(`user_${receiverInt}`).emit('receive_message', savedMsg);
       io.to(`user_${senderInt}`).emit('receive_message', savedMsg);
+
+      // 3. GATILHO IMEDIATO DE NOTIFICAÇÃO
+      const senderUser = await prisma.user.findUnique({
+        where: { id: senderInt },
+        select: { name: true }
+      });
+
+      await sendNotification(
+  receiverInt, 
+  `Nova mensagem de ${senderUser?.name || 'Treinador'} 💬`, 
+  data.content.length > 60 ? data.content.substring(0, 60) + '...' : data.content, 
+  'MESSAGE' // ← MUDA DE '2' PARA 'MESSAGE'
+);
+
     } catch (e) {
-      console.error("❌ ERRO AO SALVAR NA BD:", e.message);
+      console.error("❌ ERRO AO SALVAR NA BD OU NOTIFICAR:", e.message);
     }
   });
 
@@ -177,6 +193,7 @@ io.on('connection', (socket) => {
     const isOnline = onlineUsers.has(targetId);
     socket.emit('user_status', { userId: targetId, online: isOnline });
   });
+
 });
 
 // 7. ARRANCAR O SERVIDOR
